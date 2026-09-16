@@ -1,0 +1,13 @@
+
+Server arguments:
+  --memory-size 1073741824
+  --shared-postfix 65d68039203af10b1f51f0a49bb5d5ee
+  --working-directory Library/DataStore
+  --silent-console
+  --shutdown-grace 0
+  --client-process-check 0
+  --uds-log-file C:/Users/PC/GAMEDEV/GummiShip/Logs/UDS-Service.log
+  --debug-log 2
+  -name
+  Unity.DataStore
+
