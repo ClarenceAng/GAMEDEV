@@ -1,3 +1,6 @@
 GummiShip/Library
 GummiShip/Temp
 GummiShip/.vscode
+*.cubemap
+
+*.cubemap
