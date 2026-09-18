@@ -11,3 +11,13 @@ Server arguments:
   -name
   Unity.DataStore
 
+Initialising UDS system complete:
+  - System type: Service
+  - Resource namespace: 65d68039203af10b1f51f0a49bb5d5ee
+  - Shared memory size: 1073741824
+  - Command buffer id: 1052576
+  - Command buffer size: 8192
+  - Hashmap size: 4194304
+Starting Unity Data Store Application
+Unity Data Store Application Complete
+Shut down UDS service system complete
