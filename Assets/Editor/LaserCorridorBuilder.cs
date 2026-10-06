@@ -25,15 +25,15 @@ public static class LaserCorridorBuilder
     const float Height = 4f;
     const float BackZ = -4f;      // inner face of the wall behind the start
     const float StartLineZ = 0f;  // lasers ramp up from here
-    const float GoalZ = 56f;      // goal zone starts here
-    const float EndZ = 62f;       // inner face of the far wall
+    const float GoalZ = 116f;     // goal zone starts here
+    const float EndZ = 122f;      // inner face of the far wall
     const float WallThickness = 0.5f;
     const float TileSize = 2f;
 
     static Material floorMat, floorAltMat, safeTileMat, goalTileMat, wallMat, ceilingMat, trimMat, lampMat,
         hazardMat, exitMat, emitterMat, beamMat, usedPanelMat;
 
-    static Material medkitMat, shieldMat, slowMat, speedMat;
+    static Material medkitMat, shieldMat, slowMat, speedMat, panelIconMat;
 
     [MenuItem("Tools/Twilightfall/Build Laser Corridor")]
     static void BuildFromMenu()
@@ -148,8 +148,9 @@ public static class LaserCorridorBuilder
         lights.SetParent(level);
         for (float z = BackZ + 3; z < EndZ; z += 7)
         {
+            // Dim red emergency lighting.
             CreateDecor("Lamp", lights, new Vector3(0, Height - 0.02f, z), new Vector3(1.6f, 0.04f, 0.3f), lampMat);
-            Light light = CreateLight("Lamp Light", lights, new Vector3(0, Height - 0.4f, z), new Color(0.75f, 0.85f, 1f), 7.5f, 2.2f);
+            Light light = CreateLight("Lamp Light", lights, new Vector3(0, Height - 0.4f, z), new Color(0.7f, 0.18f, 0.14f), 7.5f, 1.4f);
             light.shadows = LightShadows.Soft;
         }
     }
@@ -171,7 +172,7 @@ public static class LaserCorridorBuilder
         CreateDecor("Door Frame L", exit, new Vector3(-0.85f, 1.35f, doorZ - 0.02f), new Vector3(0.1f, 2.7f, 0.1f), exitMat);
         CreateDecor("Door Frame R", exit, new Vector3(0.85f, 1.35f, doorZ - 0.02f), new Vector3(0.1f, 2.7f, 0.1f), exitMat);
         CreateDecor("Door Frame Top", exit, new Vector3(0, 2.7f, doorZ - 0.02f), new Vector3(1.8f, 0.1f, 0.1f), exitMat);
-        CreateLight("Exit Light", exit, new Vector3(0, 1.5f, EndZ - 1.2f), new Color(0.3f, 1f, 0.4f), 6f, 2f);
+        CreateLight("Exit Light", exit, new Vector3(0, 1.5f, EndZ - 1.2f), new Color(0.3f, 0.5f, 1f), 6f, 1.6f);
 
         // Red emitter frame the lasers come out of.
         float frameZ = EndZ - 0.6f;
@@ -186,17 +187,25 @@ public static class LaserCorridorBuilder
         Transform root = new GameObject("Bonus Panels").transform;
         root.SetParent(level);
 
-        // (tile column -1/0/1, tile-centre z, bonus)
+        // (tile column -1/0/1, tile-centre z (must be odd), bonus). Roughly every 7 m;
+        // shields and slow-mo get more common towards the end where the hard patterns are.
         var layout = new (int lane, float z, BonusType bonus)[]
         {
             (-1, 9, BonusType.Medkit),
             (1, 15, BonusType.SpeedBoost),
-            (0, 21, BonusType.Shield),
-            (-1, 27, BonusType.TimeSlow),
-            (1, 33, BonusType.Medkit),
-            (0, 39, BonusType.SpeedBoost),
-            (-1, 45, BonusType.Shield),
-            (1, 51, BonusType.TimeSlow),
+            (0, 23, BonusType.Shield),
+            (-1, 29, BonusType.TimeSlow),
+            (1, 37, BonusType.Medkit),
+            (0, 43, BonusType.SpeedBoost),
+            (-1, 51, BonusType.Shield),
+            (1, 57, BonusType.Medkit),
+            (0, 65, BonusType.TimeSlow),
+            (-1, 71, BonusType.SpeedBoost),
+            (1, 79, BonusType.Shield),
+            (0, 85, BonusType.Medkit),
+            (-1, 93, BonusType.TimeSlow),
+            (1, 99, BonusType.Shield),
+            (0, 107, BonusType.Medkit),
         };
 
         FloorPanel[] panels = new FloorPanel[layout.Length];
@@ -210,12 +219,13 @@ public static class LaserCorridorBuilder
 
     static FloorPanel CreatePanel(Transform parent, Vector3 position, BonusType bonus)
     {
+        // All panels are shades of blue; the dark icon set into each plate tells them apart.
         (Material material, Color color) = bonus switch
         {
-            BonusType.Medkit => (medkitMat, new Color(0.3f, 1f, 0.4f)),
-            BonusType.Shield => (shieldMat, new Color(0.3f, 0.6f, 1f)),
-            BonusType.TimeSlow => (slowMat, new Color(0.7f, 0.35f, 1f)),
-            _ => (speedMat, new Color(1f, 0.8f, 0.2f)),
+            BonusType.Medkit => (medkitMat, new Color(0.55f, 0.75f, 0.95f)),
+            BonusType.Shield => (shieldMat, new Color(0.2f, 0.35f, 1f)),
+            BonusType.TimeSlow => (slowMat, new Color(0.35f, 0.35f, 0.85f)),
+            _ => (speedMat, new Color(0.2f, 0.6f, 0.8f)),
         };
 
         GameObject panel = new GameObject($"{bonus} Panel");
@@ -227,7 +237,8 @@ public static class LaserCorridorBuilder
         trigger.size = new Vector3(1.8f, 1, 1.8f);
 
         Transform visual = CreateDecor("Plate", panel.transform, position + new Vector3(0, 0.015f, 0), new Vector3(1.8f, 0.03f, 1.8f), material);
-        Light glow = CreateLight("Glow", panel.transform, position + new Vector3(0, 0.4f, 0), color, 3f, 1.5f);
+        Light glow = CreateLight("Glow", panel.transform, position + new Vector3(0, 0.4f, 0), color, 3f, 1f);
+        BuildPanelIcon(panel.transform, position + new Vector3(0, 0.033f, 0), bonus);
 
         FloorPanel floorPanel = panel.AddComponent<FloorPanel>();
         SetSerialized(floorPanel, "bonus", bonus);
@@ -235,6 +246,47 @@ public static class LaserCorridorBuilder
         SetSerialized(floorPanel, "usedMaterial", usedPanelMat);
         SetSerialized(floorPanel, "glow", glow);
         return floorPanel;
+    }
+
+    // Dark inlay on top of the plate: + medkit, square frame shield, pause bars slow-mo,
+    // double chevron (pointing down the corridor) speed boost.
+    static void BuildPanelIcon(Transform panel, Vector3 top, BonusType bonus)
+    {
+        Transform icon = new GameObject("Icon").transform;
+        icon.SetParent(panel);
+        icon.position = top;
+        const float t = 0.006f;
+
+        void Bar(float x, float z, float width, float depth, float yAngle = 0)
+        {
+            Transform bar = CreateDecor("Bar", icon, top + new Vector3(x, 0, z), new Vector3(width, t, depth), panelIconMat);
+            bar.rotation = Quaternion.Euler(0, yAngle, 0);
+        }
+
+        switch (bonus)
+        {
+            case BonusType.Medkit:
+                Bar(0, 0, 1.0f, 0.28f);
+                Bar(0, 0, 0.28f, 1.0f);
+                break;
+            case BonusType.Shield:
+                Bar(0, 0.5f, 1.14f, 0.14f);
+                Bar(0, -0.5f, 1.14f, 0.14f);
+                Bar(0.5f, 0, 0.14f, 1.14f);
+                Bar(-0.5f, 0, 0.14f, 1.14f);
+                break;
+            case BonusType.TimeSlow:
+                Bar(-0.22f, 0, 0.22f, 0.9f);
+                Bar(0.22f, 0, 0.22f, 0.9f);
+                break;
+            case BonusType.SpeedBoost:
+                foreach (float apex in new[] { 0.45f, 0.0f })
+                {
+                    Bar(-0.2f, apex - 0.2f, 0.68f, 0.16f, -45);
+                    Bar(0.2f, apex - 0.2f, 0.68f, 0.16f, 45);
+                }
+                break;
+        }
     }
 
     // --- Player, lasers, manager, HUD -----------------------------------------------------
@@ -329,9 +381,8 @@ public static class LaserCorridorBuilder
         hint.rectTransform.anchoredPosition = new Vector2(30, 25);
         hint.rectTransform.sizeDelta = new Vector2(1400, 60);
         hint.color = new Color(0.8f, 0.8f, 0.85f);
-        hint.text = "Reach the green exit. Lasers hurt!   WASD move · Mouse look · Space jump · Shift sprint · R restart\n" +
-                    "Floor panels:  <color=#55FF77>GREEN heal</color>   <color=#55AAFF>BLUE shield</color>   " +
-                    "<color=#BB77FF>PURPLE slow lasers</color>   <color=#FFDD44>YELLOW speed boost</color>";
+        hint.text = "Reach the blue exit. Lasers hurt!   WASD move · Mouse look · Space jump · Shift sprint · R restart\n" +
+                    "<color=#7FA8E0>Blue floor panels:</color>  cross = heal   square = shield   bars = slow lasers   arrows = speed";
 
         GameObject panel = new GameObject("Message Panel", typeof(RectTransform));
         panel.transform.SetParent(hud, false);
@@ -365,11 +416,11 @@ public static class LaserCorridorBuilder
     {
         RenderSettings.skybox = null;
         RenderSettings.ambientMode = AmbientMode.Flat;
-        RenderSettings.ambientLight = new Color(0.09f, 0.1f, 0.13f);
+        RenderSettings.ambientLight = new Color(0.05f, 0.04f, 0.04f);
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.ExponentialSquared;
-        RenderSettings.fogColor = new Color(0.02f, 0.02f, 0.03f);
-        RenderSettings.fogDensity = 0.025f;
+        RenderSettings.fogColor = new Color(0.03f, 0.008f, 0.008f);
+        RenderSettings.fogDensity = 0.03f;
 
         GameObject volumeObject = new GameObject("Global Volume");
         Volume volume = volumeObject.AddComponent<Volume>();
@@ -389,7 +440,14 @@ public static class LaserCorridorBuilder
         bloom.scatter.Override(0.6f);
 
         Vignette vignette = profile.Add<Vignette>();
-        vignette.intensity.Override(0.35f);
+        vignette.intensity.Override(0.45f);
+
+        // Mute everything a bit and add grain for a grimier, scarier look.
+        ColorAdjustments colorAdjustments = profile.Add<ColorAdjustments>();
+        colorAdjustments.saturation.Override(-25f);
+
+        FilmGrain filmGrain = profile.Add<FilmGrain>();
+        filmGrain.intensity.Override(0.35f);
 
         Tonemapping tonemapping = profile.Add<Tonemapping>();
         tonemapping.mode.Override(TonemappingMode.ACES);
@@ -492,24 +550,25 @@ public static class LaserCorridorBuilder
             AssetDatabase.CreateFolder("Assets/Materials", "LaserCorridor");
         }
 
-        floorMat = GetMaterial("Floor", new Color(0.22f, 0.23f, 0.25f), smoothness: 0.7f);
-        floorAltMat = GetMaterial("Floor Alt", new Color(0.18f, 0.19f, 0.21f), smoothness: 0.7f);
-        safeTileMat = GetMaterial("Safe Tile", new Color(0.15f, 0.35f, 0.38f), smoothness: 0.6f);
-        goalTileMat = GetMaterial("Goal Tile", new Color(0.15f, 0.35f, 0.18f), smoothness: 0.6f);
-        wallMat = GetMaterial("Wall", new Color(0.42f, 0.45f, 0.5f), smoothness: 0.35f);
-        ceilingMat = GetMaterial("Ceiling", new Color(0.12f, 0.13f, 0.15f));
-        trimMat = GetMaterial("Trim", new Color(0.1f, 0.6f, 0.7f), emission: new Color(0.1f, 0.6f, 0.8f) * 1.5f);
-        lampMat = GetMaterial("Lamp", Color.white, emission: new Color(0.8f, 0.9f, 1f) * 3f);
-        hazardMat = GetMaterial("Hazard Line", new Color(1f, 0.8f, 0.1f), emission: new Color(1f, 0.75f, 0.1f) * 1.5f);
-        exitMat = GetMaterial("Exit", new Color(0.3f, 1f, 0.4f), emission: new Color(0.2f, 1f, 0.35f) * 2.5f);
+        floorMat = GetMaterial("Floor", new Color(0.12f, 0.12f, 0.125f), smoothness: 0.7f);
+        floorAltMat = GetMaterial("Floor Alt", new Color(0.1f, 0.1f, 0.105f), smoothness: 0.7f);
+        safeTileMat = GetMaterial("Safe Tile", new Color(0.08f, 0.11f, 0.17f), smoothness: 0.6f);
+        goalTileMat = GetMaterial("Goal Tile", new Color(0.08f, 0.11f, 0.17f), smoothness: 0.6f);
+        wallMat = GetMaterial("Wall", new Color(0.2f, 0.2f, 0.21f), smoothness: 0.35f);
+        ceilingMat = GetMaterial("Ceiling", new Color(0.06f, 0.06f, 0.065f));
+        trimMat = GetMaterial("Trim", new Color(0.3f, 0.03f, 0.03f), emission: new Color(0.6f, 0.02f, 0.02f) * 0.6f);
+        lampMat = GetMaterial("Lamp", new Color(0.5f, 0.1f, 0.08f), emission: new Color(0.8f, 0.12f, 0.08f) * 1.2f);
+        hazardMat = GetMaterial("Hazard Line", new Color(0.5f, 0.04f, 0.04f), emission: new Color(0.8f, 0.03f, 0.03f));
+        exitMat = GetMaterial("Exit", new Color(0.2f, 0.4f, 0.9f), emission: new Color(0.15f, 0.35f, 1f) * 1.5f);
         emitterMat = GetMaterial("Laser Emitter", new Color(0.3f, 0.05f, 0.05f), emission: new Color(1f, 0.05f, 0.05f) * 1.2f);
         beamMat = GetMaterial("Laser Beam", new Color(1f, 0.1f, 0.1f), emission: new Color(1f, 0.01f, 0.01f) * 6f);
-        usedPanelMat = GetMaterial("Panel Used", new Color(0.1f, 0.1f, 0.11f), smoothness: 0.8f);
+        usedPanelMat = GetMaterial("Panel Used", new Color(0.07f, 0.07f, 0.075f), smoothness: 0.8f);
 
-        medkitMat = GetMaterial("Panel Medkit", new Color(0.3f, 1f, 0.4f), emission: new Color(0.1f, 1f, 0.25f) * 1.2f);
-        shieldMat = GetMaterial("Panel Shield", new Color(0.3f, 0.6f, 1f), emission: new Color(0.1f, 0.4f, 1f) * 1.2f);
-        slowMat = GetMaterial("Panel Slow", new Color(0.7f, 0.35f, 1f), emission: new Color(0.55f, 0.1f, 1f) * 1.2f);
-        speedMat = GetMaterial("Panel Speed", new Color(1f, 0.8f, 0.2f), emission: new Color(1f, 0.65f, 0f) * 1.2f);
+        medkitMat = GetMaterial("Panel Medkit", new Color(0.55f, 0.72f, 0.9f), emission: new Color(0.35f, 0.55f, 0.85f) * 0.9f);
+        shieldMat = GetMaterial("Panel Shield", new Color(0.15f, 0.3f, 0.8f), emission: new Color(0.08f, 0.22f, 0.9f));
+        slowMat = GetMaterial("Panel Slow", new Color(0.3f, 0.3f, 0.7f), emission: new Color(0.2f, 0.2f, 0.75f) * 0.9f);
+        speedMat = GetMaterial("Panel Speed", new Color(0.2f, 0.5f, 0.65f), emission: new Color(0.08f, 0.45f, 0.65f) * 0.9f);
+        panelIconMat = GetMaterial("Panel Icon", new Color(0.03f, 0.03f, 0.035f), smoothness: 0.2f);
     }
 
     static Material GetMaterial(string name, Color color, Color? emission = null, float smoothness = 0.5f)

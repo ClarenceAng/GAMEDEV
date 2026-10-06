@@ -16,6 +16,10 @@ public class LaserCorridorManager : MonoBehaviour
 
     public static LaserCorridorManager Instance { get; private set; }
 
+    // HUD palette: green for good news, reds for danger, blue only for the shield.
+    static readonly Color GoodTextColor = new Color(0.45f, 0.85f, 0.5f);
+    static readonly Color DangerTextColor = new Color(1f, 0.23f, 0.19f);
+
     [SerializeField]
     PlayerHealth player;
 
@@ -197,19 +201,19 @@ public class LaserCorridorManager : MonoBehaviour
         {
             case BonusType.Medkit:
                 player.Heal(medkitHeal);
-                ShowPickup($"MEDKIT  +{medkitHeal} HP", new Color(0.4f, 1f, 0.5f));
+                ShowPickup($"MEDKIT  +{medkitHeal} HP");
                 break;
             case BonusType.Shield:
                 player.GrantShield(shieldDuration);
-                ShowPickup($"SHIELD  {shieldDuration:0}s invulnerability", new Color(0.4f, 0.75f, 1f));
+                ShowPickup($"SHIELD  {shieldDuration:0}s invulnerability");
                 break;
             case BonusType.TimeSlow:
                 slowUntil = Time.time + slowDuration;
-                ShowPickup($"SLOW-MO  lasers slowed for {slowDuration:0}s", new Color(0.8f, 0.5f, 1f));
+                ShowPickup($"SLOW-MO  lasers slowed for {slowDuration:0}s");
                 break;
             case BonusType.SpeedBoost:
                 speedUntil = Time.time + speedBoostDuration;
-                ShowPickup($"ADRENALINE  speed up for {speedBoostDuration:0}s", new Color(1f, 0.85f, 0.3f));
+                ShowPickup($"ADRENALINE  speed up for {speedBoostDuration:0}s");
                 break;
         }
         UpdateTimedBonuses();
@@ -235,7 +239,7 @@ public class LaserCorridorManager : MonoBehaviour
         }
 
         messagePanel.SetActive(true);
-        messageText.color = new Color(0.45f, 1f, 0.55f);
+        messageText.color = GoodTextColor;
         messageText.text = $"CORRIDOR CLEARED\n\n<size=40>Time {elapsed:0.0}s{(newBest ? "  (best!)" : "")}    Health {player.Current}/{player.Max}    Deaths {deaths}</size>\n\n<size=32>Press R to run it again</size>";
     }
 
@@ -258,7 +262,7 @@ public class LaserCorridorManager : MonoBehaviour
         controller.enabled = false;
 
         messagePanel.SetActive(true);
-        messageText.color = new Color(1f, 0.25f, 0.2f);
+        messageText.color = DangerTextColor;
         messageText.text = "YOU DIED\n\n<size=36>Returning to the start...</size>";
     }
 
@@ -271,10 +275,10 @@ public class LaserCorridorManager : MonoBehaviour
         controller.SprintSpeed = baseSprintSpeed * speedScale;
     }
 
-    void ShowPickup(string message, Color color)
+    void ShowPickup(string message)
     {
         pickupText.text = message;
-        pickupText.color = color;
+        pickupText.color = GoodTextColor;
         pickupUntil = Time.time + 2.5f;
     }
 
@@ -283,9 +287,14 @@ public class LaserCorridorManager : MonoBehaviour
         float fraction = (float)player.Current / player.Max;
         healthFill.anchorMax = new Vector2(fraction, 1);
         healthFillImage.color = player.IsShielded
-            ? new Color(0.35f, 0.7f, 1f)
-            : Color.Lerp(new Color(0.9f, 0.15f, 0.15f), new Color(0.3f, 0.9f, 0.4f), fraction);
-        healthText.text = $"HP {player.Current} / {player.Max}";
+            ? new Color(0.25f, 0.45f, 0.85f)
+            : Color.Lerp(new Color(0.35f, 0.03f, 0.03f), new Color(0.6f, 0.08f, 0.08f), fraction);
+
+        // Resident Evil style condition readout.
+        string condition = fraction > 0.6f ? "<color=#73D980>FINE</color>"
+            : fraction > 0.3f ? "<color=#C86464>CAUTION</color>"
+            : "<color=#FF3B30>DANGER</color>";
+        healthText.text = $"{condition}   {player.Current} / {player.Max}";
 
         string best = bestTime < 0 ? "--" : $"{bestTime:0.0}s";
         statsText.text = $"Time {elapsed:0.0}s    Best {best}    Deaths {deaths}    Progress {spawner.Progress * 100:0}%";
@@ -293,15 +302,15 @@ public class LaserCorridorManager : MonoBehaviour
         string effects = "";
         if (player.IsShielded)
         {
-            effects += $"<color=#66BBFF>SHIELD {player.ShieldRemaining:0.0}s</color>   ";
+            effects += $"<color=#73D980>SHIELD {player.ShieldRemaining:0.0}s</color>   ";
         }
         if (IsSlowed)
         {
-            effects += $"<color=#CC88FF>SLOW-MO {slowUntil - Time.time:0.0}s</color>   ";
+            effects += $"<color=#73D980>SLOW-MO {slowUntil - Time.time:0.0}s</color>   ";
         }
         if (IsSpeedBoosted)
         {
-            effects += $"<color=#FFDD55>ADRENALINE {speedUntil - Time.time:0.0}s</color>";
+            effects += $"<color=#73D980>ADRENALINE {speedUntil - Time.time:0.0}s</color>";
         }
         effectsText.text = effects;
 

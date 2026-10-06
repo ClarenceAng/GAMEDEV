@@ -31,7 +31,7 @@ public class LaserCorridorTests
     {
         LaserWave wave = spawner.Spawn(LaserPattern.LowSweep);
         float startZ = wave.transform.position.z;
-        Assert.Greater(startZ, 55f, "Lasers should spawn at the far end of the corridor");
+        Assert.Greater(startZ, GoalZ(), "Lasers should spawn at the far end of the corridor, beyond the goal");
 
         yield return new WaitForSeconds(0.5f);
 
@@ -96,6 +96,9 @@ public class LaserCorridorTests
     {
         FloorPanel panel = FindPanel(BonusType.Medkit);
         yield return StepOn(panel);
+        // A stray hit would start the invulnerability window and block the killing blow.
+        spawner.Stop();
+        spawner.ClearAll();
         Vector3 startPosition = new Vector3(0, 0, -2f);
         manager.Teleport(new Vector3(0, 0.1f, 30f), Quaternion.identity);
 
@@ -115,7 +118,7 @@ public class LaserCorridorTests
     [UnityTest]
     public IEnumerator ReachingTheEnd_CompletesLevel()
     {
-        manager.Teleport(new Vector3(0, 0.1f, 59f), Quaternion.identity);
+        manager.Teleport(new Vector3(0, 0.1f, GoalZ()), Quaternion.identity);
 
         yield return WaitUntilOrTimeout(() => manager.CurrentState == LaserCorridorManager.State.Complete, 1f);
 
@@ -123,13 +126,96 @@ public class LaserCorridorTests
         Assert.IsFalse(spawner.IsRunning);
     }
 
+    [UnityTest]
+    public IEnumerator EveryPattern_SpawnsAndMoves()
+    {
+        spawner.Stop();
+        spawner.ClearAll();
+        foreach (LaserPattern pattern in System.Enum.GetValues(typeof(LaserPattern)))
+        {
+            LaserWave wave = spawner.Spawn(pattern, 80f);
+            Assert.Greater(wave.GetComponentsInChildren<LaserBeam>().Length, 0, pattern + " has no beams");
+        }
+
+        yield return new WaitForSeconds(0.3f);
+
+        LogAssert.NoUnexpectedReceived();
+        Assert.IsTrue(spawner.ActiveWaves.All(w => w.transform.position.z < 80f));
+    }
+
+    [Test]
+    public void MostWaves_AreComplexMovingPatterns_AndNeverRepeatBackToBack()
+    {
+        var complex = new[] { LaserPattern.LowAndSweeper, LaserPattern.Scissor, LaserPattern.Spinner, LaserPattern.MovingGap };
+        const int samples = 4000;
+        int complexCount = 0;
+        LaserPattern previous = spawner.PickPattern();
+        for (int i = 0; i < samples; i++)
+        {
+            LaserPattern pattern = spawner.PickPattern();
+            Assert.AreNotEqual(previous, pattern, "Same pattern twice in a row");
+            if (complex.Contains(pattern))
+            {
+                complexCount++;
+            }
+            previous = pattern;
+        }
+
+        float share = (float)complexCount / samples;
+        Assert.That(share, Is.InRange(0.77f, 0.83f), $"Complex share was {share:P0}");
+    }
+
+    [UnityTest]
+    public IEnumerator Spinner_IsSafeWhenHuggingAWall()
+    {
+        spawner.Stop();
+        spawner.ClearAll();
+        manager.Teleport(new Vector3(2.5f, 0.1f, 5f), Quaternion.identity);
+        yield return new WaitForFixedUpdate();
+        LaserWave wave = spawner.Spawn(LaserPattern.Spinner, player.transform.position.z + 3f);
+
+        yield return WaitUntilOrTimeout(() => wave == null || wave.transform.position.z < player.transform.position.z - 1f, 3f);
+
+        Assert.AreEqual(player.Max, player.Current);
+    }
+
+    [UnityTest]
+    public IEnumerator Spinner_HitsPlayerInTheMiddle()
+    {
+        spawner.Stop();
+        spawner.ClearAll();
+        manager.Teleport(new Vector3(0f, 0.1f, 5f), Quaternion.identity);
+        yield return new WaitForFixedUpdate();
+        spawner.Spawn(LaserPattern.Spinner, player.transform.position.z + 3f);
+
+        yield return WaitUntilOrTimeout(() => player.Current < player.Max, 3f);
+
+        Assert.Less(player.Current, player.Max);
+    }
+
+    [UnityTest]
+    public IEnumerator Run_StartsWithWavesAlreadyInFlight_ButClearNearStart()
+    {
+        Assert.Greater(spawner.ActiveWaves.Count, 3);
+        Assert.IsTrue(spawner.ActiveWaves.All(w => w.transform.position.z > 10f));
+        yield break;
+    }
+
+    static float GoalZ()
+    {
+        return Object.FindFirstObjectByType<CorridorGoal>().transform.position.z;
+    }
+
     static FloorPanel FindPanel(BonusType bonus)
     {
         return Object.FindObjectsByType<FloorPanel>(FindObjectsSortMode.InstanceID).First(p => p.Bonus == bonus);
     }
 
+    // Clears the lasers first so a stray hit can't skew the health checks.
     IEnumerator StepOn(FloorPanel panel)
     {
+        spawner.Stop();
+        spawner.ClearAll();
         manager.Teleport(panel.transform.position + Vector3.up * 0.1f, Quaternion.identity);
         for (int i = 0; i < 4; i++)
         {

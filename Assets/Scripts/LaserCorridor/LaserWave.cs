@@ -15,7 +15,14 @@ public class LaserWave : MonoBehaviour
         public float phase;
     }
 
+    struct Spinner
+    {
+        public Transform pivot;
+        public float degreesPerSecond;
+    }
+
     readonly List<Sweeper> sweepers = new List<Sweeper>();
+    readonly List<Spinner> spinners = new List<Spinner>();
 
     LaserSpawner spawner;
     Rigidbody body;
@@ -49,6 +56,12 @@ public class LaserWave : MonoBehaviour
         UpdateSweepers();
     }
 
+    // Rotates `pivot` around the corridor axis (Z).
+    public void AddSpinner(Transform pivot, float degreesPerSecond)
+    {
+        spinners.Add(new Spinner { pivot = pivot, degreesPerSecond = degreesPerSecond });
+    }
+
     void FixedUpdate()
     {
         float dt = Time.fixedDeltaTime * spawner.SpeedMultiplier;
@@ -72,6 +85,10 @@ public class LaserWave : MonoBehaviour
             Vector3 local = sweeper.beam.localPosition;
             local.x = sweeper.centreX + Mathf.Sin((age / sweeper.period + sweeper.phase) * Mathf.PI * 2) * sweeper.amplitude;
             sweeper.beam.localPosition = local;
+        }
+        foreach (Spinner spinner in spinners)
+        {
+            spinner.pivot.localRotation = Quaternion.Euler(0, 0, age * spinner.degreesPerSecond);
         }
     }
 }
