@@ -1,19 +1,38 @@
-# Resident Evil Laser Corridor – V3
+# Resident Evil Laser Corridor – V4
 
 Unity version: **6000.3.9f1 (Unity 6.3 LTS)**
 
 Open `Assets/Scenes/LaserCorridor.unity`.
 
-## V3 changes
-- Speed-pad arrows now clearly point toward the goal (+Z).
-- Timed bonus text counts down every second and fades at 0s.
-- Multiple speed boosts stack independently, each with its own countdown line.
-- Two speed pads are present and all bonus-pad positions shuffle each attempt.
-- Vertical lasers run from floor to ceiling.
-- Horizontal and diagonal lasers overlap the corridor walls so there are no visible gaps at the ends.
-- 12 more varied laser patterns, including randomized diagonal angles and multi-beam combinations.
-- Harder spawn rate / laser speed while keeping the 60-second round.
-- The corridor geometry is now generated in **Edit Mode** and automatically saved into `LaserCorridor.unity`, so the corridor is visible and inspectable immediately when the scene is opened. Expand `LASER_CORRIDOR_SCENE_GEOMETRY` in the Hierarchy during a video demo.
+## V4 changes
+- Added actual reusable prefab assets for the repeated corridor section, all four bonus-pad types, and the laser beam.
+- The editable Scene view uses prefab instances for the repeated corridor modules, pads, and sample lasers.
+- Runtime gameplay also loads the same prefabs through `Resources/Prefabs`, with safe fallback code if an asset is missing.
+- Fixed the HUD health label/bar spacing and changed the health fill to a stable fill-based bar.
+- Increased desktop image quality: 4x MSAA, high-quality SMAA, full render scale, HDR/MSAA enabled, dynamic resolution disabled.
+- Keeps all V3 mechanics: randomized pads, stacked speed-boost countdowns, 12 laser patterns, long corridor, 60-second timer, health/shield/slow/speed bonuses.
+
+## Prefabs
+On the first Unity import, the editor utility creates these in:
+
+`Assets/Laser Corridor/Resources/Prefabs`
+
+- `CorridorSection.prefab`
+- `HealthPad.prefab`
+- `SpeedPad.prefab`
+- `ShieldPad.prefab`
+- `SlowPad.prefab`
+- `LaserBeam.prefab`
+
+If you want to rebuild them manually:
+
+`Tools > Laser Corridor > Rebuild Prefabs`
+
+Then rebuild the editable scene if needed:
+
+`Tools > Laser Corridor > Rebuild Editable Scene Geometry`
+
+After Unity creates the prefabs, save the scene once (`Ctrl+S`) and include the generated prefab/material assets in your Git branch.
 
 ## Controls
 - WASD: move
@@ -22,15 +41,5 @@ Open `Assets/Scenes/LaserCorridor.unity`.
 - RMB: orbit camera in third-person
 - R: run again after winning
 
-## Scene-view demo
-When `LaserCorridor.unity` is opened, an editor utility automatically creates and saves organized scene geometry under:
-
-`LASER_CORRIDOR_SCENE_GEOMETRY`
-
-It contains structure, lighting, decoration, pads, gameplay markers, and representative laser shapes as ordinary Unity GameObjects that can be clicked and inspected in the Scene/Hierarchy views.
-
-At Play time, the gameplay bootstrap replaces this editor geometry with the live collision-enabled version, so the actual gameplay remains reliable.
-
-If the editable scene geometry ever goes missing, use:
-
-`Tools > Laser Corridor > Rebuild Editable Scene Geometry`
+## Image quality tip for recording
+The project now enables anti-aliasing itself, but the Unity **Game** tab can still display at a low editor preview resolution. For your video, set the Game view to **1920x1080** (or another 16:9 Full HD preset) and use **Scale 1x / Fit** rather than a tiny fixed preview resolution.

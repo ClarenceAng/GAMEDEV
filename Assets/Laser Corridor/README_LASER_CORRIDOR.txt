@@ -1,21 +1,30 @@
-RESIDENT EVIL LASER CORRIDOR - V3
+LASER CORRIDOR V4
 Unity 6000.3.9f1
 
 Open Assets/Scenes/LaserCorridor.unity.
 
-The corridor should now be visible immediately in Edit Mode under the hierarchy root:
-LASER_CORRIDOR_SCENE_GEOMETRY
+V4 adds reusable prefab assets for:
+- CorridorSection
+- HealthPad
+- SpeedPad
+- ShieldPad
+- SlowPad
+- LaserBeam
 
-If it is missing, use Tools > Laser Corridor > Rebuild Editable Scene Geometry.
+They are automatically generated under:
+Assets/Laser Corridor/Resources/Prefabs
 
-V3:
-- 60-second run
-- 12 laser patterns
-- vertical lasers reach floor/ceiling
-- horizontal/diagonal beams overlap corridor walls
-- randomized diagonal rotations
-- 2 stackable speed pads
-- bonus countdown lines update every second and fade at 0
-- health, shield, laser slowdown, and speed bonuses
-- bonus pad positions shuffle each run
-- editable Scene-view corridor for the video walkthrough
+Manual editor tools:
+Tools > Laser Corridor > Rebuild Prefabs
+Tools > Laser Corridor > Rebuild Editable Scene Geometry
+
+The Scene-view corridor now uses prefab instances for the repeated modules, bonus pads, and example lasers. Runtime gameplay also loads the prefab assets, with fallback code for safety.
+
+HUD health alignment was fixed. Desktop rendering now uses 4x MSAA + high-quality SMAA and full render scale.
+
+Controls:
+WASD move
+Space jump
+Mouse wheel first/third person
+RMB orbit in third person
+R restart after win

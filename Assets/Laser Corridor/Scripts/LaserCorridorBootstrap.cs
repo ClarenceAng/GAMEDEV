@@ -164,10 +164,22 @@ public class LaserCorridorBootstrap : MonoBehaviour
     {
         camera.backgroundColor = new Color(0.005f, 0.008f, 0.012f);
         camera.farClipPlane = 420f;
+        camera.allowHDR = true;
+        camera.allowMSAA = true;
+        camera.allowDynamicResolution = false;
+
+        // Force full-resolution rendering and strong edge smoothing for the desktop demo.
+        ScalableBufferManager.ResizeBuffers(1f, 1f);
+        QualitySettings.antiAliasing = 4;
+        QualitySettings.anisotropicFiltering = AnisotropicFiltering.ForceEnable;
 
         UniversalAdditionalCameraData cameraData = camera.GetComponent<UniversalAdditionalCameraData>();
         if (cameraData != null)
+        {
             cameraData.renderPostProcessing = true;
+            cameraData.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            cameraData.antialiasingQuality = AntialiasingQuality.High;
+        }
 
         RenderSettings.ambientMode = AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.035f, 0.055f, 0.075f);
@@ -210,15 +222,26 @@ public class LaserCorridorBootstrap : MonoBehaviour
         CreateCube("RightWall", new Vector3(5.35f, 4.15f, 0f), new Vector3(0.7f, 8.3f, corridorLength), wallMaterial, environmentRoot);
         CreateCube("Ceiling", new Vector3(0f, CeilingY, 0f), new Vector3(10f, 0.55f, corridorLength), darkMaterial, environmentRoot);
 
-        // Repeating modular industrial sections. The overhead ribs are visual-only so they can never snag a jump.
+        // Repeating modular industrial sections are real prefab instances. This keeps the
+        // corridor easy to extend and makes the reuse visible in the Project/Hierarchy.
+        GameObject corridorSectionPrefab = Resources.Load<GameObject>("Prefabs/CorridorSection");
         for (float z = -148f; z <= 148f; z += 8f)
         {
-            CreateCube("RibL", new Vector3(-4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trimMaterial, environmentRoot);
-            CreateCube("RibR", new Vector3(4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trimMaterial, environmentRoot);
-            CreateCube("RibTop", new Vector3(0f, 7.78f, z), new Vector3(10f, 0.26f, 0.42f), trimMaterial, environmentRoot, false);
-
-            CreateCube("PanelL", new Vector3(-4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), darkMaterial, environmentRoot);
-            CreateCube("PanelR", new Vector3(4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), darkMaterial, environmentRoot);
+            if (corridorSectionPrefab != null)
+            {
+                GameObject section = Instantiate(corridorSectionPrefab, environmentRoot);
+                section.name = $"CorridorSection_{z:000}";
+                section.transform.localPosition = new Vector3(0f, 0f, z);
+            }
+            else
+            {
+                // Safe fallback if the editor-generated prefab has not been created yet.
+                CreateCube("RibL", new Vector3(-4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trimMaterial, environmentRoot);
+                CreateCube("RibR", new Vector3(4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trimMaterial, environmentRoot);
+                CreateCube("RibTop", new Vector3(0f, 7.78f, z), new Vector3(10f, 0.26f, 0.42f), trimMaterial, environmentRoot, false);
+                CreateCube("PanelL", new Vector3(-4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), darkMaterial, environmentRoot);
+                CreateCube("PanelR", new Vector3(4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), darkMaterial, environmentRoot);
+            }
         }
 
         // Floor lane detailing.
@@ -350,8 +373,37 @@ public class LaserCorridorBootstrap : MonoBehaviour
         return bonus;
     }
 
+    private BonusPad InstantiateBonusPadPrefab(string resourceName, string instanceName, Vector3 position, BonusPad.BonusType type, LaserCorridorGameManager manager)
+    {
+        GameObject prefab = Resources.Load<GameObject>($"Prefabs/{resourceName}");
+        if (prefab == null)
+            return null;
+
+        GameObject padObject = Instantiate(prefab, position, Quaternion.identity, environmentRoot);
+        padObject.name = instanceName;
+        BonusPad bonus = padObject.GetComponent<BonusPad>();
+        if (bonus == null)
+            bonus = padObject.AddComponent<BonusPad>();
+
+        BoxCollider trigger = padObject.GetComponent<BoxCollider>();
+        if (trigger == null)
+        {
+            trigger = padObject.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.size = new Vector3(2.4f, 1.4f, 2.4f);
+            trigger.center = new Vector3(0f, 0.3f, 0f);
+        }
+
+        bonus.Configure(type, manager);
+        pads.Add(bonus);
+        return bonus;
+    }
+
     private void CreateHealPad(Vector3 position, LaserCorridorGameManager manager)
     {
+        if (InstantiateBonusPadPrefab("HealthPad", "BONUS_HEALTH", position, BonusPad.BonusType.Heal, manager) != null)
+            return;
+
         BonusPad pad = CreatePadBase("BONUS_HEALTH", position, new Vector3(2.3f, 0.18f, 2.3f), healMaterial, BonusPad.BonusType.Heal, manager);
         Transform t = pad.transform;
         CreateCube("PlusH", Vector3.zero, new Vector3(1.25f, 0.07f, 0.34f), healMaterial, t, false).transform.localPosition = new Vector3(0f, 0.26f, 0f);
@@ -361,6 +413,9 @@ public class LaserCorridorBootstrap : MonoBehaviour
 
     private void CreateSpeedPad(string padName, Vector3 position, LaserCorridorGameManager manager)
     {
+        if (InstantiateBonusPadPrefab("SpeedPad", padName, position, BonusPad.BonusType.SpeedBoost, manager) != null)
+            return;
+
         BonusPad pad = CreatePadBase(padName, position, new Vector3(3.4f, 0.18f, 2.5f), speedMaterial, BonusPad.BonusType.SpeedBoost, manager);
         Transform t = pad.transform;
         for (int i = -1; i <= 1; i++)
@@ -382,6 +437,9 @@ public class LaserCorridorBootstrap : MonoBehaviour
 
     private void CreateShieldPad(Vector3 position, LaserCorridorGameManager manager)
     {
+        if (InstantiateBonusPadPrefab("ShieldPad", "BONUS_SHIELD", position, BonusPad.BonusType.Shield, manager) != null)
+            return;
+
         BonusPad pad = CreatePadBase("BONUS_SHIELD", position, new Vector3(2.5f, 0.18f, 2.5f), shieldMaterial, BonusPad.BonusType.Shield, manager);
         Transform t = pad.transform;
         for (int i = 0; i < 4; i++)
@@ -395,6 +453,9 @@ public class LaserCorridorBootstrap : MonoBehaviour
 
     private void CreateSlowPad(Vector3 position, LaserCorridorGameManager manager)
     {
+        if (InstantiateBonusPadPrefab("SlowPad", "BONUS_SLOW", position, BonusPad.BonusType.LaserSlowdown, manager) != null)
+            return;
+
         BonusPad pad = CreatePadBase("BONUS_SLOW", position, new Vector3(2.4f, 0.18f, 2.4f), slowMaterial, BonusPad.BonusType.LaserSlowdown, manager);
         Transform t = pad.transform;
         for (int i = -1; i <= 1; i += 2)

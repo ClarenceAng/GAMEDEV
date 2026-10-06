@@ -5,6 +5,7 @@ using UnityEngine;
 public class LaserSpawner : MonoBehaviour
 {
     private Material laserMaterial;
+    private GameObject laserBeamPrefab;
     private Transform player;
     private Coroutine spawnRoutine;
     private readonly List<LaserObstacle> activeLasers = new List<LaserObstacle>();
@@ -25,6 +26,7 @@ public class LaserSpawner : MonoBehaviour
     {
         laserMaterial = material;
         player = playerTransform;
+        laserBeamPrefab = Resources.Load<GameObject>("Prefabs/LaserBeam");
     }
 
     public void StartSpawning()
@@ -226,32 +228,52 @@ public class LaserSpawner : MonoBehaviour
 
     private void CreateBeam(Transform parent, Vector3 localPosition, Vector3 scale, float zRotation, LaserObstacle owner)
     {
-        GameObject beam = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        beam.name = "LaserBeam";
-        beam.transform.SetParent(parent, false);
+        GameObject beam;
+        if (laserBeamPrefab != null)
+        {
+            beam = Instantiate(laserBeamPrefab, parent);
+            beam.name = "LaserBeam_PREFAB";
+        }
+        else
+        {
+            beam = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            beam.name = "LaserBeam_Fallback";
+            beam.transform.SetParent(parent, false);
+        }
+
         beam.transform.localPosition = localPosition;
         beam.transform.localRotation = Quaternion.Euler(0f, 0f, zRotation);
         beam.transform.localScale = scale;
 
         MeshRenderer renderer = beam.GetComponent<MeshRenderer>();
-        renderer.sharedMaterial = laserMaterial;
-        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        renderer.receiveShadows = false;
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = laserMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
 
         BoxCollider collider = beam.GetComponent<BoxCollider>();
+        if (collider == null)
+            collider = beam.AddComponent<BoxCollider>();
         collider.isTrigger = true;
 
-        LaserHitbox hitbox = beam.AddComponent<LaserHitbox>();
+        LaserHitbox hitbox = beam.GetComponent<LaserHitbox>();
+        if (hitbox == null)
+            hitbox = beam.AddComponent<LaserHitbox>();
         hitbox.Configure(owner);
 
-        GameObject glow = new GameObject("LaserGlow");
-        glow.transform.SetParent(beam.transform, false);
-        Light light = glow.AddComponent<Light>();
-        light.type = LightType.Point;
-        light.color = new Color(1f, 0.05f, 0.03f);
-        light.range = 3.0f;
-        light.intensity = 3.3f;
-        light.shadows = LightShadows.None;
+        if (beam.transform.Find("LaserGlow") == null)
+        {
+            GameObject glow = new GameObject("LaserGlow");
+            glow.transform.SetParent(beam.transform, false);
+            Light light = glow.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(1f, 0.05f, 0.03f);
+            light.range = 3.0f;
+            light.intensity = 3.3f;
+            light.shadows = LightShadows.None;
+        }
     }
 
     private void CleanupList()

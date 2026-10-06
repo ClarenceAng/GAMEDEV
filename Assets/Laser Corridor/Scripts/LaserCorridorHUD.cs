@@ -24,6 +24,8 @@ public class LaserCorridorHUD : MonoBehaviour
     private TMP_Text timerText;
     private TMP_Text centerText;
     private Image healthFill;
+    private RectTransform healthFillRect;
+    private const float HealthFillFullWidth = 276f;
     private TMP_FontAsset font;
     private RectTransform bonusStack;
     private readonly List<BonusNotice> bonusNotices = new List<BonusNotice>();
@@ -136,21 +138,32 @@ public class LaserCorridorHUD : MonoBehaviour
         if (root == null)
             root = gameObject.AddComponent<RectTransform>();
 
-        GameObject topPanel = MakePanel("TopPanel", root, new Color(0.015f, 0.02f, 0.03f, 0.78f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(880f, 74f));
+        GameObject topPanel = MakePanel("TopPanel", root, new Color(0.015f, 0.02f, 0.03f, 0.80f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -50f), new Vector2(980f, 76f));
 
-        healthText = MakeText("HealthText", topPanel.transform, "HEALTH 100", 26, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(38f, 10f), new Vector2(250f, 44f));
+        // Keep the label and bar in a dedicated left-side group so they cannot overlap
+        // when the Game view changes aspect ratio or CanvasScaler changes scale.
+        GameObject healthGroup = new GameObject("HealthGroup", typeof(RectTransform));
+        healthGroup.transform.SetParent(topPanel.transform, false);
+        RectTransform healthGroupRect = healthGroup.GetComponent<RectTransform>();
+        healthGroupRect.anchorMin = new Vector2(0f, 0.5f);
+        healthGroupRect.anchorMax = new Vector2(0f, 0.5f);
+        healthGroupRect.pivot = new Vector2(0f, 0.5f);
+        healthGroupRect.anchoredPosition = new Vector2(26f, 0f);
+        healthGroupRect.sizeDelta = new Vector2(560f, 58f);
 
-        GameObject healthBg = MakePanel("HealthBarBG", topPanel.transform, new Color(0.05f, 0.06f, 0.07f, 1f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(285f, 0f), new Vector2(260f, 20f));
-        GameObject fill = MakePanel("HealthFill", healthBg.transform, new Color(0.15f, 0.95f, 0.35f, 1f), new Vector2(0f, 0f), new Vector2(0f, 1f), Vector2.zero, Vector2.zero);
-        RectTransform fillRect = fill.GetComponent<RectTransform>();
-        fillRect.pivot = new Vector2(0f, 0.5f);
-        fillRect.anchorMin = new Vector2(0f, 0f);
-        fillRect.anchorMax = new Vector2(1f, 1f);
-        fillRect.offsetMin = new Vector2(2f, 2f);
-        fillRect.offsetMax = new Vector2(-2f, -2f);
+        healthText = MakeText("HealthText", healthGroup.transform, "HEALTH 100", 24, TextAlignmentOptions.Left, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(170f, 44f));
+
+        GameObject healthBg = MakePanel("HealthBarBG", healthGroup.transform, new Color(0.05f, 0.06f, 0.07f, 1f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(330f, 0f), new Vector2(280f, 20f));
+        GameObject fill = MakePanel("HealthFill", healthBg.transform, new Color(0.15f, 0.95f, 0.35f, 1f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(2f, 0f), new Vector2(HealthFillFullWidth, 16f));
+        healthFillRect = fill.GetComponent<RectTransform>();
+        healthFillRect.pivot = new Vector2(0f, 0.5f);
         healthFill = fill.GetComponent<Image>();
+        // Resize the RectTransform itself rather than relying on Image.fillAmount.
+        // The HUD is generated at runtime and this Image intentionally has no source sprite;
+        // a sprite-less Filled Image can keep rendering at full width on some Unity versions.
+        healthFill.type = Image.Type.Simple;
 
-        timerText = MakeText("TimerText", topPanel.transform, "TIME 60.0", 34, TextAlignmentOptions.Right, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-34f, 0f), new Vector2(240f, 50f));
+        timerText = MakeText("TimerText", topPanel.transform, "TIME 60.0", 32, TextAlignmentOptions.Right, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-28f, 0f), new Vector2(235f, 50f));
 
         centerText = MakeText("CenterMessage", root, string.Empty, 54, TextAlignmentOptions.Center, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900f, 220f));
         centerText.fontStyle = FontStyles.Bold;
@@ -185,9 +198,16 @@ public class LaserCorridorHUD : MonoBehaviour
 
         if (healthFill != null)
         {
-            float ratio = max > 0 ? (float)current / max : 0f;
-            RectTransform rect = healthFill.rectTransform;
-            rect.anchorMax = new Vector2(Mathf.Clamp01(ratio), 1f);
+            float ratio = max > 0 ? Mathf.Clamp01((float)current / max) : 0f;
+
+            // Shrink from left-to-right as HP is lost. Because the pivot is on the left,
+            // the left edge remains fixed while only the right edge moves inward.
+            if (healthFillRect != null)
+            {
+                Vector2 size = healthFillRect.sizeDelta;
+                size.x = HealthFillFullWidth * ratio;
+                healthFillRect.sizeDelta = size;
+            }
 
             healthFill.color = ratio > 0.55f
                 ? new Color(0.15f, 0.95f, 0.35f, 1f)

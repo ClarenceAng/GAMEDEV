@@ -35,7 +35,11 @@ public static class LaserCorridorPreviewBaker
         if (!scene.IsValid() || scene.name != "LaserCorridor")
             return;
 
-        if (GameObject.Find(PreviewRootName) == null)
+        GameObject previewRoot = GameObject.Find(PreviewRootName);
+        bool needsPrefabUpgrade = previewRoot != null &&
+            previewRoot.transform.Find("00_STRUCTURE/Modular_Ribs_PREFAB_INSTANCES") == null;
+
+        if (previewRoot == null || needsPrefabUpgrade)
             GeneratePreviewInternal(false, true);
     }
 
@@ -65,6 +69,7 @@ public static class LaserCorridorPreviewBaker
         RemovePreviewInternal();
         EnsureFolder("Assets/Laser Corridor");
         EnsureFolder(MatFolder);
+        LaserCorridorPrefabBuilder.EnsurePrefabs();
 
         Material floor = GetOrCreateMaterial("Scene_FloorSteel", new Color(0.09f, 0.11f, 0.13f), 0.75f, 0.38f);
         Material wall = GetOrCreateMaterial("Scene_WallPanels", new Color(0.055f, 0.075f, 0.09f), 0.55f, 0.25f);
@@ -106,15 +111,27 @@ public static class LaserCorridorPreviewBaker
         Cube("RightWall", new Vector3(5.35f, 4.15f, 0f), new Vector3(0.7f, 8.3f, length), wall, structure);
         Cube("Ceiling", new Vector3(0f, CeilingY, 0f), new Vector3(10f, 0.55f, length), dark, structure);
 
-        Transform ribs = Group("Modular_Ribs", structure);
+        Transform ribs = Group("Modular_Ribs_PREFAB_INSTANCES", structure);
+        GameObject corridorSectionPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"{LaserCorridorPrefabBuilder.PrefabFolder}/CorridorSection.prefab");
         for (float z = -148f; z <= 148f; z += 8f)
         {
-            Transform section = Group($"Section_{z:000}", ribs);
-            Cube("RibL", new Vector3(-4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trim, section);
-            Cube("RibR", new Vector3(4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trim, section);
-            Cube("RibTop", new Vector3(0f, 7.78f, z), new Vector3(10f, 0.26f, 0.42f), trim, section);
-            Cube("PanelL", new Vector3(-4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), dark, section);
-            Cube("PanelR", new Vector3(4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), dark, section);
+            if (corridorSectionPrefab != null)
+            {
+                GameObject section = (GameObject)PrefabUtility.InstantiatePrefab(corridorSectionPrefab, scene);
+                section.name = $"Section_{z:000}_PREFAB";
+                section.transform.SetParent(ribs, false);
+                section.transform.localPosition = new Vector3(0f, 0f, z);
+            }
+            else
+            {
+                Transform section = Group($"Section_{z:000}", ribs);
+                Cube("RibL", new Vector3(-4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trim, section);
+                Cube("RibR", new Vector3(4.92f, 4.15f, z), new Vector3(0.34f, 7.5f, 0.42f), trim, section);
+                Cube("RibTop", new Vector3(0f, 7.78f, z), new Vector3(10f, 0.26f, 0.42f), trim, section);
+                Cube("PanelL", new Vector3(-4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), dark, section);
+                Cube("PanelR", new Vector3(4.96f, 3.7f, z + 3.2f), new Vector3(0.08f, 4.2f, 4.9f), dark, section);
+            }
         }
 
         Cube("LaneLeft", new Vector3(-3.95f, 0.515f, 0f), new Vector3(0.055f, 0.025f, 292f), lane, decor);
@@ -161,11 +178,11 @@ public static class LaserCorridorPreviewBaker
             }
         }
 
-        PreviewPad("BONUS_HEALTH", new Vector3(-2.3f, 0.58f, -112f), new Vector3(2.3f, 0.18f, 2.3f), heal, dark, pads, 0);
-        PreviewPad("BONUS_SPEED_A", new Vector3(0f, 0.58f, -62f), new Vector3(3.4f, 0.18f, 2.5f), speed, dark, pads, 1);
-        PreviewPad("BONUS_SHIELD", new Vector3(2.3f, 0.58f, -8f), new Vector3(2.5f, 0.18f, 2.5f), shield, dark, pads, 2);
-        PreviewPad("BONUS_SLOW", new Vector3(-2.3f, 0.58f, 48f), new Vector3(2.4f, 0.18f, 2.4f), slow, dark, pads, 3);
-        PreviewPad("BONUS_SPEED_B", new Vector3(0f, 0.58f, 105f), new Vector3(3.4f, 0.18f, 2.5f), speed, dark, pads, 1);
+        PreviewPadPrefab("HealthPad", "BONUS_HEALTH_PREFAB", new Vector3(-2.3f, 0.58f, -112f), pads, scene);
+        PreviewPadPrefab("SpeedPad", "BONUS_SPEED_A_PREFAB", new Vector3(0f, 0.58f, -62f), pads, scene);
+        PreviewPadPrefab("ShieldPad", "BONUS_SHIELD_PREFAB", new Vector3(2.3f, 0.58f, -8f), pads, scene);
+        PreviewPadPrefab("SlowPad", "BONUS_SLOW_PREFAB", new Vector3(-2.3f, 0.58f, 48f), pads, scene);
+        PreviewPadPrefab("SpeedPad", "BONUS_SPEED_B_PREFAB", new Vector3(0f, 0.58f, 105f), pads, scene);
 
         Cube("GoalLine", new Vector3(0f, 0.53f, 143.5f), new Vector3(9f, 0.035f, 0.32f), goal, markers);
         GameObject start = new GameObject("StartPoint");
@@ -177,10 +194,10 @@ public static class LaserCorridorPreviewBaker
 
         // Representative beam geometry for the Scene-view demo. These are editor-only examples;
         // runtime lasers are spawned from the emitter bank and move toward the player.
-        PreviewLaser("LowHorizontal_Example", new Vector3(0f, 0.95f, 118f), new Vector3(10.23f, 0.24f, 0.30f), 0f, laser, laserExamples);
-        PreviewLaser("Vertical_Example", new Vector3(-2.4f, 4.285f, 126f), new Vector3(0.28f, 7.75f, 0.30f), 0f, laser, laserExamples);
+        PreviewLaserPrefab("LowHorizontal_Example_PREFAB", new Vector3(0f, 0.95f, 118f), new Vector3(10.23f, 0.24f, 0.30f), 0f, laserExamples, scene);
+        PreviewLaserPrefab("Vertical_Example_PREFAB", new Vector3(-2.4f, 4.285f, 126f), new Vector3(0.28f, 7.75f, 0.30f), 0f, laserExamples, scene);
         float diagonalLength = 10.27f / Mathf.Cos(26f * Mathf.Deg2Rad);
-        PreviewLaser("Diagonal_Example", new Vector3(0f, 4.3f, 134f), new Vector3(diagonalLength, 0.24f, 0.30f), 26f, laser, laserExamples);
+        PreviewLaserPrefab("Diagonal_Example_PREFAB", new Vector3(0f, 4.3f, 134f), new Vector3(diagonalLength, 0.24f, 0.30f), 26f, laserExamples, scene);
 
         Selection.activeGameObject = root;
         SceneView.lastActiveSceneView?.FrameSelected();
@@ -192,6 +209,34 @@ public static class LaserCorridorPreviewBaker
 
         if (showDialog)
             EditorUtility.DisplayDialog("Laser Corridor", "Editable corridor geometry rebuilt and saved into LaserCorridor.unity.", "OK");
+    }
+
+    private static void PreviewPadPrefab(string prefabAssetName, string instanceName, Vector3 position, Transform parent, Scene scene)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"{LaserCorridorPrefabBuilder.PrefabFolder}/{prefabAssetName}.prefab");
+        if (prefab == null)
+            return;
+
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+        instance.name = instanceName;
+        instance.transform.SetParent(parent, false);
+        instance.transform.position = position;
+    }
+
+    private static void PreviewLaserPrefab(string instanceName, Vector3 position, Vector3 scale, float zRotation, Transform parent, Scene scene)
+    {
+        GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+            $"{LaserCorridorPrefabBuilder.PrefabFolder}/LaserBeam.prefab");
+        if (prefab == null)
+            return;
+
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+        instance.name = instanceName;
+        instance.transform.SetParent(parent, false);
+        instance.transform.position = position;
+        instance.transform.rotation = Quaternion.Euler(0f, 0f, zRotation);
+        instance.transform.localScale = scale;
     }
 
     private static void RemovePreviewInternal()
