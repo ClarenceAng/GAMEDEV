@@ -1,3 +1,21 @@
-GummiShip/Library
-GummiShip/Temp
-GummiShip/.vscode
+# Unity generated folders
+Library/
+Temp/
+Logs/
+Obj/
+
+# IDE/editor generated files
+.vscode/
+.vs/
+.idea/
+
+# Visual Studio / Rider generated files
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+
+# OS generated files
+.DS_Store
+Thumbs.db
