@@ -1,0 +1,460 @@
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+
+namespace SnakesTemptation
+{
+    public enum GameState { Title, Retro, Transition, World3D, Lost }
+
+    /// <summary>
+    /// Snake's Temptation (trimmed). A retro LCD Snake; eat <see cref="applesToFlip"/> apples and the world turns 3D: the board
+    /// opens out into a hedge maze and the camera drops in behind the snake. The game then holds in <see cref="GameState.World3D"/>
+    /// (a static render of the 3D environment). Space restarts. There is no 3D gameplay.
+    /// </summary>
+    public sealed class SnakeGameController : MonoBehaviour
+    {
+        [Header("Assets (filled by Tools > Snake's Temptation > Build Snake Scene)")]
+        public ArtSet art;
+        public Camera cam;
+        public Light sun;
+
+        [Header("Rules")]
+        [Tooltip("0 = a different layout every run.")] public int seed = 0;
+        [Tooltip("2D apples before the world turns 3D.")] public int applesToFlip = 3;
+        [Header("The maze")]
+        [Tooltip("Maze cells per side. The map is 4x this plus 1 cells across (16 -> 65). Keep it even, 12 or more.")]
+        public int mazeCells = ChaseTuning.MazeCells;
+        [Tooltip("Open plazas besides the starting one.")] public int roomCount = ChaseTuning.RoomCount;
+        public int treesPerRoom = ChaseTuning.TreesPerRoom;
+        public int startPlazaTrees = ChaseTuning.StartPlazaTrees;
+
+        [Header("Pacing (seconds per step; lower = faster)")]
+        public float retroInterval = 0.13f;
+
+        [Header("Audio")]
+        [Range(0f, 1f), Tooltip("Overall volume. Everything is silent on the title screen and only starts with the game.")]
+        public float audioVolume = 0.4f;
+
+        [Tooltip("Tests drive time through Advance() instead of Update().")]
+        public bool manualTime;
+
+        // Timeline of the flip, in seconds from the moment the last 2D apple is eaten.
+        public const float GlitchEnd = 0.8f;   // screen corrupts, shakes
+        public const float MorphEnd = 2.6f;    // white flash at GlitchEnd, then 2D -> 3D, maze rises
+
+        static readonly Color LcdDark = new Color32(15, 56, 15, 255);
+        static readonly Color LcdMid = new Color32(139, 172, 15, 255);
+        static readonly Color Dusk = new Color(0.045f, 0.035f, 0.08f);
+
+        public GameState State { get; private set; }
+        public SnakeSim Sim { get; private set; }
+        public MazeMap Maze { get; private set; }
+        public RectInt RetroRect { get; private set; }
+        public float Look { get; private set; }          // 0 = retro LCD, 1 = full 3D
+        public float StateTime => stateTime;
+        /// <summary>The game's sound (for tests).</summary>
+        public RetroAudio Audio => audioFx;
+
+        GridMap grid;
+        Transform worldRoot;
+        ArenaView arena;
+        MazeView mazeView;
+        AppleView appleView;
+        SnakeView snakeView;
+        CameraRig rig;
+        RetroAudio audioFx;
+        Hud hud;
+        Volume volume;
+        Vignette vignette;
+        Bloom bloom;
+
+        float globalTime, stateTime, snakeAcc;
+        bool startRequested;
+
+        // saved scene lighting, restored on destroy
+        bool savedFog;
+        Color savedFogColor, savedAmbient;
+        float savedFogDensity;
+        UnityEngine.Rendering.AmbientMode savedAmbientMode;
+        FogMode savedFogMode;
+
+        // ===================================================================================== lifecycle
+
+        void Awake()
+        {
+            if (art == null || art.retroBase == null)
+                Debug.LogError("SnakeGameController: art set is incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
+            if (cam == null) cam = Camera.main;
+
+            savedFog = RenderSettings.fog;
+            savedFogColor = RenderSettings.fogColor;
+            savedFogDensity = RenderSettings.fogDensity;
+            savedFogMode = RenderSettings.fogMode;
+            savedAmbient = RenderSettings.ambientLight;
+            savedAmbientMode = RenderSettings.ambientMode;
+
+            audioFx = gameObject.AddComponent<RetroAudio>();
+            SetupPost();
+            hud = new Hud(transform, cam);
+            BuildWorld();
+        }
+
+        void OnDestroy()
+        {
+            RenderSettings.fog = savedFog;
+            RenderSettings.fogColor = savedFogColor;
+            RenderSettings.fogDensity = savedFogDensity;
+            RenderSettings.fogMode = savedFogMode;
+            RenderSettings.ambientMode = savedAmbientMode;
+            RenderSettings.ambientLight = savedAmbient;
+        }
+
+        void Update()
+        {
+            ReadInput();
+            if (!manualTime) Advance(Time.deltaTime);
+        }
+
+        void SetupPost()
+        {
+            var go = new GameObject("PostFX");
+            go.transform.SetParent(transform, false);
+            volume = go.AddComponent<Volume>();
+            volume.isGlobal = true;
+            var profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            vignette = profile.Add<Vignette>(true);
+            vignette.intensity.Override(0.22f);
+            vignette.smoothness.Override(0.5f);
+            vignette.color.Override(Color.black);
+            bloom = profile.Add<Bloom>(true);
+            bloom.threshold.Override(0.9f);
+            bloom.intensity.Override(0f);
+            bloom.scatter.Override(0.6f);
+            volume.sharedProfile = profile;
+
+            var data = cam.GetUniversalAdditionalCameraData();
+            data.renderPostProcessing = true;
+            data.antialiasing = AntialiasingMode.SubpixelMorphologicalAntiAliasing;
+            cam.allowHDR = true;
+        }
+
+        void BuildWorld()
+        {
+            int s = seed != 0 ? seed : System.Environment.TickCount;
+            Maze = new MazeMap(mazeCells, s, roomCount);
+            Sim = new SnakeSim(Maze.Size, Maze.Size, s);
+            // The retro board is the starting plaza minus its one-cell border (23 -> 21).
+            RetroRect = new RectInt(Maze.Start.x + 1, Maze.Start.y + 1, Maze.Start.width - 2, Maze.Start.height - 2);
+            Sim.SetPlayfield(RetroRect);
+            grid = new GridMap(Maze.Size, Maze.Size);
+            if (rig == null) rig = new CameraRig(cam, RetroRect.width, RetroRect.height);
+
+            worldRoot = new GameObject("World").transform;
+            worldRoot.SetParent(transform, false);
+            arena = new ArenaView(worldRoot, grid, art, RetroRect);
+            mazeView = new MazeView(worldRoot, grid, art, Maze, RetroRect);
+            appleView = new AppleView(worldRoot, grid, art);
+            snakeView = new SnakeView(worldRoot, grid, art);
+
+            State = GameState.Title;
+            stateTime = 0f;
+            Look = 0f;
+            snakeAcc = 0f;
+            rig.Blend = 0f;
+            rig.Shake = 0f;
+            rig.FovKick = 0f;
+            audioFx.Muted = true;   // the title screen (and any freshly built world) is silent
+            audioFx.StopMusic();
+            RefreshViews(0f);
+        }
+
+        void ResetAndPlay()
+        {
+            Rebuild(seed);
+            StartRetro();
+        }
+
+        /// <summary>Throws the world away and starts over at the title screen with this seed (0 = random).</summary>
+        public void Rebuild(int newSeed)
+        {
+            seed = newSeed;
+            Destroy(worldRoot.gameObject);
+            BuildWorld();
+        }
+
+        // ===================================================================================== input
+
+        static readonly Vector2Int Up = Vector2Int.up, Down = Vector2Int.down, Left = Vector2Int.left, Right = Vector2Int.right;
+
+        void ReadInput()
+        {
+            var kb = Keyboard.current;
+            var gp = Gamepad.current;
+            Vector2Int d = Vector2Int.zero;   // retro: absolute directions
+            bool start = false;
+
+            if (kb != null)
+            {
+                if (kb.upArrowKey.wasPressedThisFrame || kb.wKey.wasPressedThisFrame) d = Up;
+                else if (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame) d = Down;
+                else if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) d = Left;
+                else if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) d = Right;
+                start |= kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame;
+            }
+            if (gp != null)
+            {
+                if (gp.dpad.up.wasPressedThisFrame) d = Up;
+                else if (gp.dpad.down.wasPressedThisFrame) d = Down;
+                else if (gp.dpad.left.wasPressedThisFrame) d = Left;
+                else if (gp.dpad.right.wasPressedThisFrame) d = Right;
+                else
+                {
+                    Vector2 st = gp.leftStick.ReadValue();
+                    if (st.magnitude > 0.6f) d = Mathf.Abs(st.x) > Mathf.Abs(st.y) ? (st.x > 0 ? Right : Left) : (st.y > 0 ? Up : Down);
+                }
+                start |= gp.buttonSouth.wasPressedThisFrame || gp.startButton.wasPressedThisFrame;
+            }
+
+            if (d != Vector2Int.zero) Press(d);
+            if (start) PressStart();
+        }
+
+        /// <summary>A direction input for the retro game. On the title screen it also starts the game.</summary>
+        public void Press(Vector2Int dir)
+        {
+            if (State == GameState.Title) startRequested = true;
+            if (State == GameState.Title || State == GameState.Retro) Sim.QueueTurn(dir);
+        }
+
+        public void PressStart() => startRequested = true;
+
+        // ===================================================================================== main loop
+
+        public void Advance(float dt)
+        {
+            globalTime += dt;
+            stateTime += dt;
+
+            switch (State)
+            {
+                case GameState.Title:
+                    if (startRequested) StartRetro();
+                    break;
+
+                case GameState.Retro:
+                    RunSnakeClock(dt, retroInterval);
+                    break;
+
+                case GameState.Transition:
+                    UpdateTransition();
+                    break;
+
+                case GameState.World3D:
+                    if (startRequested && stateTime > 0.8f) ResetAndPlay();
+                    break;
+
+                case GameState.Lost:
+                    if (startRequested && stateTime > RestartDelay) ResetAndPlay();
+                    break;
+            }
+
+            startRequested = false;
+            RefreshViews(dt);
+        }
+
+        void StartRetro()
+        {
+            State = GameState.Retro;
+            stateTime = 0f;
+            snakeAcc = 0f;
+            audioFx.Muted = false;  // sound begins with the game, not before
+            audioFx.PlayMusic(false);
+        }
+
+        /// <summary>Seconds after dying before Space restarts.</summary>
+        float RestartDelay => 0.8f;
+
+        float CurrentSnakeInterval => retroInterval;
+
+        void RunSnakeClock(float dt, float interval)
+        {
+            snakeAcc += dt;
+            while (snakeAcc >= interval && State == GameState.Retro)
+            {
+                snakeAcc -= interval;
+                DoSnakeStep();
+            }
+        }
+
+        void DoSnakeStep()
+        {
+            var before = new List<Vector2Int>(Sim.Snake);
+            StepResult r = Sim.Step();
+            if (r.Moved) snakeView.OnStep(before);
+            if (r.Died)
+            {
+                Lose();
+                return;
+            }
+            if (!r.Ate) return;
+
+            audioFx.Eat();
+            if (State == GameState.Retro && Sim.ApplesEaten >= applesToFlip) BeginTransition();
+        }
+
+        // ===================================================================================== the flip
+
+        void BeginTransition()
+        {
+            State = GameState.Transition;
+            stateTime = 0f;
+            snakeAcc = 0f;
+
+            // The rules change now (the sim is frozen during the flip); the visuals follow over the next few seconds.
+            var setup = ChaseSetup.Begin(Sim, Maze, treesPerRoom, startPlazaTrees);
+            arena.PlantTrees(setup.Trees);
+            mazeView.Show();
+            audioFx.StopMusic();
+            audioFx.Flip();
+        }
+
+        void UpdateTransition()
+        {
+            Look = MathX.Smooth01(Mathf.InverseLerp(GlitchEnd, MorphEnd, stateTime));
+
+            if (stateTime >= MorphEnd)
+            {
+                State = GameState.World3D;   // hold here: the 3D environment, rendered and static
+                stateTime = 0f;
+                Look = 1f;
+                snakeAcc = 0f;
+                rig.Impulse(0.4f);
+            }
+        }
+
+        // ===================================================================================== endings
+
+        void Lose()
+        {
+            // Only the retro board can be lost now.
+            State = GameState.Lost;
+            stateTime = 0f;
+            audioFx.StopMusic();
+            audioFx.Die();
+            rig.Impulse(1f);
+        }
+
+        // ===================================================================================== presentation
+
+        void RefreshViews(float dt)
+        {
+            bool inTransition = State == GameState.Transition;
+            float glitch = inTransition && stateTime < GlitchEnd ? MathX.Smooth01(stateTime / GlitchEnd) : 0f;
+            float ripple = inTransition ? Mathf.Max(0f, stateTime - GlitchEnd) : 0f;
+            bool world3D = State == GameState.World3D;
+
+            audioFx.Master = audioVolume;
+            arena.Refresh(Look, ripple, glitch);
+            mazeView.Refresh(inTransition ? ripple : world3D ? 10f : 0f);
+            if (inTransition) arena.GrowTrees(stateTime - (GlitchEnd + 0.6f));
+            else if (world3D) arena.GrowTrees(10f);
+
+            float interval = CurrentSnakeInterval;
+            float snakeP = State == GameState.Retro ? Mathf.Clamp01(snakeAcc / interval) : 1f;
+            snakeView.SetGlow(0f, globalTime);
+            snakeView.Refresh(Sim, snakeP, Look, globalTime, dt);
+            appleView.Refresh(Sim, Look, globalTime, 0f);
+
+            // Camera: the flip drives the blend; in the 3D world it rides behind the snake's head.
+            rig.Blend = Look;
+            rig.Shake = glitch * 0.6f;
+            rig.FollowPos = snakeView.HeadWorld;
+            rig.FollowHeading = new Vector3(Sim.Heading.x, 0f, Sim.Heading.y);
+            rig.Tick(dt);
+
+            ApplyLighting();
+            UpdateHud();
+        }
+
+        void ApplyLighting()
+        {
+            float look = Look;
+            // Retro LCD -> 3D dusk.
+            Color fog = Dusk;
+            cam.backgroundColor = Color.Lerp(LcdMid, fog, look);
+
+            RenderSettings.fog = look > 0.01f;
+            RenderSettings.fogMode = FogMode.ExponentialSquared;
+            RenderSettings.fogColor = fog;
+            RenderSettings.fogDensity = Mathf.Lerp(0f, 0.022f, look);
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = Color.Lerp(Color.white, new Color(0.48f, 0.45f, 0.62f), look);
+
+            if (sun != null)
+            {
+                sun.color = new Color(1f, 0.68f, 0.48f); // warm dusk
+                sun.intensity = Mathf.Lerp(0f, 1.9f, look);
+                sun.shadows = LightShadows.Soft;
+                sun.transform.rotation = Quaternion.Euler(50f, -35f, 0f);
+            }
+
+            vignette.intensity.value = Mathf.Lerp(0.22f, 0.32f, look);
+            vignette.color.value = Color.black;
+            bloom.intensity.value = Mathf.Lerp(0f, 0.9f, look);
+        }
+
+        // ===================================================================================== HUD
+
+        void UpdateHud()
+        {
+            Color retroInk = LcdDark;
+            hud.Begin();
+            hud.Scanlines(Mathf.Lerp(0.30f, 0.05f, Look));
+
+            switch (State)
+            {
+                case GameState.Title:
+                    hud.Panel(new Color(LcdMid.r, LcdMid.g, LcdMid.b, 0.88f), 0.18f, 0.52f);
+                    hud.Text("SNAKE'S", 0.5f, 0.26f, 92f, retroInk, shadow: false);
+                    hud.Text("TEMPTATION", 0.5f, 0.38f, 92f, retroInk, shadow: false);
+                    if (Mathf.Repeat(globalTime, 1f) < 0.65f) hud.Text("PRESS SPACE", 0.5f, 0.62f, 44f, retroInk, shadow: false);
+                    hud.Text("WASD / ARROWS", 0.5f, 0.69f, 28f, retroInk, shadow: false);
+                    break;
+
+                case GameState.Retro:
+                    hud.Text($"SCORE {Sim.ApplesEaten:00}", 0.02f, 0.06f, 44f, retroInk, true, false);
+                    break;
+
+                case GameState.Transition:
+                    if (stateTime > 0.15f && stateTime < MorphEnd)
+                    {
+                        float j = stateTime < GlitchEnd ? (Random.value - 0.5f) * 0.012f : 0f;
+                        hud.Text("YOU SHOULD NOT HAVE TASTED IT", 0.5f + j, 0.5f - j, 50f, new Color(0.85f, 0.1f, 0.1f));
+                    }
+                    break;
+
+                case GameState.World3D:
+                    if (stateTime > 0.8f) hud.Text("PRESS SPACE TO RESTART", 0.5f, 0.90f, 30f, new Color(1f, 1f, 1f, 0.7f));
+                    break;
+
+                case GameState.Lost:
+                    hud.Dim(new Color(0f, 0f, 0f, 0.5f));
+                    hud.Text("GAME OVER", 0.5f, 0.42f, 120f, LcdMid);
+                    hud.Text($"SCORE {Sim.ApplesEaten:00}", 0.5f, 0.55f, 44f, Color.white);
+                    if (stateTime > RestartDelay) hud.Text("PRESS SPACE", 0.5f, 0.66f, 38f, Color.white);
+                    break;
+            }
+
+            // White flash at the moment the world flips.
+            float a = 0f;
+            if (State == GameState.Transition)
+            {
+                float t = stateTime - (GlitchEnd - 0.15f);
+                a = t < 0f ? 0f : t < 0.15f ? t / 0.15f : Mathf.Clamp01(1f - (t - 0.15f) / 0.55f);
+            }
+            hud.Flash(a, Color.white);
+        }
+    }
+}
