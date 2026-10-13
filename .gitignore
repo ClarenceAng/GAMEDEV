@@ -114,3 +114,10 @@ GummiShip/Library
 GummiShip/Temp
 GummiShip/.vscode
 
+
+# SnakesTemptationTransition generated files
+SnakesTemptationTransition/Library/
+SnakesTemptationTransition/Temp/
+SnakesTemptationTransition/Obj/
+SnakesTemptationTransition/Logs/
+SnakesTemptationTransition/UserSettings/
