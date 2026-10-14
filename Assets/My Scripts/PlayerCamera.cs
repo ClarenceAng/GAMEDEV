@@ -22,7 +22,7 @@ public class PlayerCamera : MonoBehaviour
     public Renderer[] playerRenderers;
 
     private float horizontalRotation = 0f;
-    private float verticalRotation = 20f;
+    private float verticalRotation = 1.5f;
 
     private bool firstPerson = false;
 

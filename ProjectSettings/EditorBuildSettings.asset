@@ -6,11 +6,11 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/LaserCorridor.unity
-    guid: 3dace0972a904be8952cc2fee0d2ccf4
+    path: Assets/Scenes/01 Icicle Knockdown.unity
+    guid: 62153b9fe50f0f64bb98551fa1557149
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/Scenes/02 Snowman Showdown.unity
+    guid: f45ca0136d4427c4e8ff4b7181bf70e4
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0

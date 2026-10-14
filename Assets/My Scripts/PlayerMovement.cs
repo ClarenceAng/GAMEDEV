@@ -24,21 +24,18 @@ public class PlayerMovement : MonoBehaviour
     public Transform cameraTransform;
 
     private Rigidbody rb;
-    private float originalMoveSpeed;
-    private float speedMultiplier = 1f;
-    private bool controlsEnabled = true;
-    private Transform respawnPoint;
 
     private bool jumpHeld = false;
+    private Vector3 startingPosition;
 
     // The platform currently underneath the player.
     private MovingPlatform currentPlatform;
 
 
-    void Awake()
+    void Start()
     {
         rb = GetComponent<Rigidbody>();
-        originalMoveSpeed = moveSpeed;
+        startingPosition = rb.position;
     }
 
 
@@ -98,12 +95,6 @@ public class PlayerMovement : MonoBehaviour
 
     void HandleMovement()
     {
-        if (!controlsEnabled)
-        {
-            rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-            return;
-        }
-
         Vector2 input = Vector2.zero;
 
         if (Keyboard.current != null)
@@ -145,9 +136,9 @@ public class PlayerMovement : MonoBehaviour
 
         // Move the player.
         rb.linearVelocity = new Vector3(
-            movement.x * originalMoveSpeed * speedMultiplier,
+            movement.x * moveSpeed,
             rb.linearVelocity.y,
-            movement.z * originalMoveSpeed * speedMultiplier
+            movement.z * moveSpeed
         );
 
 
@@ -171,7 +162,7 @@ public class PlayerMovement : MonoBehaviour
     void HandleJump()
     {
         // If Space is being held and the player is grounded, jump immediately.
-        if (controlsEnabled && jumpHeld && IsGrounded())
+        if (jumpHeld && IsGrounded())
         {
             // Calculate the upward velocity needed to reach the desired jump height.
             float jumpVelocity =
@@ -270,56 +261,17 @@ public class PlayerMovement : MonoBehaviour
         }
     }
 
-    public void SetRespawnPoint(Transform point)
-    {
-        respawnPoint = point;
-    }
-
-    public void SetControlsEnabled(bool enabled)
-    {
-        controlsEnabled = enabled;
-        if (!enabled && rb != null)
-            rb.linearVelocity = new Vector3(0f, rb.linearVelocity.y, 0f);
-    }
-
-    public void SetBaseMoveSpeed(float speed)
-    {
-        moveSpeed = Mathf.Max(0.1f, speed);
-        originalMoveSpeed = moveSpeed;
-    }
-
-    public void ConfigureJump(float height, float rise, float apex, float fall, float apexStart)
-    {
-        jumpHeight = Mathf.Max(0.5f, height);
-        riseGravity = Mathf.Max(1f, rise);
-        apexGravity = Mathf.Max(1f, apex);
-        fallGravity = Mathf.Max(1f, fall);
-        apexStartVelocity = Mathf.Max(0f, apexStart);
-    }
-
-    public void SetSpeedMultiplier(float multiplier)
-    {
-        speedMultiplier = Mathf.Max(0.1f, multiplier);
-    }
-
-    public void ResetMovementModifiers()
-    {
-        speedMultiplier = 1f;
-        controlsEnabled = true;
-    }
-
     public void Respawn()
     {
         // Stop the player's movement.
         rb.linearVelocity = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
-        // Use a referenced spawn Transform when the current level provides one.
-        // The old hard-coded position remains as a fallback for the original traversal scene.
-        rb.position = respawnPoint != null ? respawnPoint.position : new Vector3(0f, 1f, 0f);
+        // Make the player respawn at the starting position.
+        rb.position = startingPosition;
 
         // Reset the player's rotation.
-        rb.rotation = respawnPoint != null ? respawnPoint.rotation : Quaternion.identity;
+        rb.rotation = Quaternion.identity;
 
         // Forget the platform we were standing on.
         currentPlatform = null;
