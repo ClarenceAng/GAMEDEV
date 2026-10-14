@@ -6,12 +6,13 @@ using UnityEngine.Rendering.Universal;
 
 namespace SnakesTemptation
 {
-    public enum GameState { Title, Retro, Transition, World3D, Lost }
+    public enum GameState { Title, Retro, Transition, Chase, Lost }
 
     /// <summary>
     /// Snake's Temptation (trimmed). A retro LCD Snake; eat <see cref="applesToFlip"/> apples and the world turns 3D: the board
-    /// opens out into a hedge maze and the camera drops in behind the snake. The game then holds in <see cref="GameState.World3D"/>
-    /// (a static render of the 3D environment). Space restarts. There is no 3D gameplay.
+    /// opens out into a hedge maze and the camera drops in behind the snake. In <see cref="GameState.Chase"/> the snake keeps
+    /// moving and is steered left / right relative to itself; running into a hedge or a tree is game over. (No monster, seeds,
+    /// lanterns or lives yet.)
     /// </summary>
     public sealed class SnakeGameController : MonoBehaviour
     {
@@ -32,6 +33,7 @@ namespace SnakesTemptation
 
         [Header("Pacing (seconds per step; lower = faster)")]
         public float retroInterval = 0.13f;
+        public float chaseInterval = ChaseTuning.SnakeInterval;
 
         [Header("Audio")]
         [Range(0f, 1f), Tooltip("Overall volume. Everything is silent on the title screen and only starts with the game.")]
@@ -70,8 +72,8 @@ namespace SnakesTemptation
         Vignette vignette;
         Bloom bloom;
 
-        float globalTime, stateTime, snakeAcc;
-        bool startRequested;
+        float globalTime, stateTime, snakeAcc, hintLeft;
+        bool startRequested, stickLatched;
 
         // saved scene lighting, restored on destroy
         bool savedFog;
@@ -162,6 +164,7 @@ namespace SnakesTemptation
             stateTime = 0f;
             Look = 0f;
             snakeAcc = 0f;
+            hintLeft = 0f;
             rig.Blend = 0f;
             rig.Shake = 0f;
             rig.FovKick = 0f;
@@ -193,6 +196,7 @@ namespace SnakesTemptation
             var kb = Keyboard.current;
             var gp = Gamepad.current;
             Vector2Int d = Vector2Int.zero;   // retro: absolute directions
+            int turn = 0;                     // maze: -1 = left, +1 = right, relative to the snake
             bool start = false;
 
             if (kb != null)
@@ -201,23 +205,29 @@ namespace SnakesTemptation
                 else if (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame) d = Down;
                 else if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) d = Left;
                 else if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) d = Right;
+                if (kb.leftArrowKey.wasPressedThisFrame || kb.aKey.wasPressedThisFrame) turn = -1;
+                else if (kb.rightArrowKey.wasPressedThisFrame || kb.dKey.wasPressedThisFrame) turn = 1;
                 start |= kb.spaceKey.wasPressedThisFrame || kb.enterKey.wasPressedThisFrame;
             }
             if (gp != null)
             {
                 if (gp.dpad.up.wasPressedThisFrame) d = Up;
                 else if (gp.dpad.down.wasPressedThisFrame) d = Down;
-                else if (gp.dpad.left.wasPressedThisFrame) d = Left;
-                else if (gp.dpad.right.wasPressedThisFrame) d = Right;
+                else if (gp.dpad.left.wasPressedThisFrame) { d = Left; turn = -1; }
+                else if (gp.dpad.right.wasPressedThisFrame) { d = Right; turn = 1; }
                 else
                 {
                     Vector2 st = gp.leftStick.ReadValue();
                     if (st.magnitude > 0.6f) d = Mathf.Abs(st.x) > Mathf.Abs(st.y) ? (st.x > 0 ? Right : Left) : (st.y > 0 ? Up : Down);
+                    // a stick flick is one turn, not one per frame
+                    if (Mathf.Abs(st.x) > 0.6f && !stickLatched) { turn = st.x > 0 ? 1 : -1; stickLatched = true; }
+                    else if (Mathf.Abs(st.x) < 0.3f) stickLatched = false;
                 }
                 start |= gp.buttonSouth.wasPressedThisFrame || gp.startButton.wasPressedThisFrame;
             }
 
-            if (d != Vector2Int.zero) Press(d);
+            if (State == GameState.Chase) { if (turn != 0) PressTurn(turn); }
+            else if (d != Vector2Int.zero) Press(d);
             if (start) PressStart();
         }
 
@@ -226,6 +236,12 @@ namespace SnakesTemptation
         {
             if (State == GameState.Title) startRequested = true;
             if (State == GameState.Title || State == GameState.Retro) Sim.QueueTurn(dir);
+        }
+
+        /// <summary>A turn for the maze: -1 = left, +1 = right, relative to the snake (third person).</summary>
+        public void PressTurn(int side)
+        {
+            if (State == GameState.Chase) Sim.QueueRelativeTurn(side);
         }
 
         public void PressStart() => startRequested = true;
@@ -251,8 +267,9 @@ namespace SnakesTemptation
                     UpdateTransition();
                     break;
 
-                case GameState.World3D:
-                    if (startRequested && stateTime > 0.8f) ResetAndPlay();
+                case GameState.Chase:
+                    hintLeft = Mathf.Max(0f, hintLeft - dt);
+                    RunSnakeClock(dt, chaseInterval);
                     break;
 
                 case GameState.Lost:
@@ -276,12 +293,12 @@ namespace SnakesTemptation
         /// <summary>Seconds after dying before Space restarts.</summary>
         float RestartDelay => 0.8f;
 
-        float CurrentSnakeInterval => retroInterval;
+        float CurrentSnakeInterval => State == GameState.Chase ? chaseInterval : retroInterval;
 
         void RunSnakeClock(float dt, float interval)
         {
             snakeAcc += dt;
-            while (snakeAcc >= interval && State == GameState.Retro)
+            while (snakeAcc >= interval && (State == GameState.Retro || State == GameState.Chase))
             {
                 snakeAcc -= interval;
                 DoSnakeStep();
@@ -326,11 +343,13 @@ namespace SnakesTemptation
 
             if (stateTime >= MorphEnd)
             {
-                State = GameState.World3D;   // hold here: the 3D environment, rendered and static
+                State = GameState.Chase;
                 stateTime = 0f;
                 Look = 1f;
                 snakeAcc = 0f;
+                hintLeft = 9f;
                 rig.Impulse(0.4f);
+                audioFx.PlayMusic(true);
             }
         }
 
@@ -338,7 +357,7 @@ namespace SnakesTemptation
 
         void Lose()
         {
-            // Only the retro board can be lost now.
+            // One life: a wall on the retro board, or a hedge or tree in the maze, ends the game.
             State = GameState.Lost;
             stateTime = 0f;
             audioFx.StopMusic();
@@ -353,7 +372,7 @@ namespace SnakesTemptation
             bool inTransition = State == GameState.Transition;
             float glitch = inTransition && stateTime < GlitchEnd ? MathX.Smooth01(stateTime / GlitchEnd) : 0f;
             float ripple = inTransition ? Mathf.Max(0f, stateTime - GlitchEnd) : 0f;
-            bool world3D = State == GameState.World3D;
+            bool world3D = !inTransition && Look > 0.5f;   // in the maze, or crashed in it
 
             audioFx.Master = audioVolume;
             arena.Refresh(Look, ripple, glitch);
@@ -362,7 +381,8 @@ namespace SnakesTemptation
             else if (world3D) arena.GrowTrees(10f);
 
             float interval = CurrentSnakeInterval;
-            float snakeP = State == GameState.Retro ? Mathf.Clamp01(snakeAcc / interval) : 1f;
+            bool snakeMoving = State == GameState.Retro || State == GameState.Chase;
+            float snakeP = snakeMoving ? Mathf.Clamp01(snakeAcc / interval) : 1f;
             snakeView.SetGlow(0f, globalTime);
             snakeView.Refresh(Sim, snakeP, Look, globalTime, dt);
             appleView.Refresh(Sim, Look, globalTime, 0f);
@@ -435,16 +455,23 @@ namespace SnakesTemptation
                     }
                     break;
 
-                case GameState.World3D:
-                    if (stateTime > 0.8f) hud.Text("PRESS SPACE TO RESTART", 0.5f, 0.90f, 30f, new Color(1f, 1f, 1f, 0.7f));
+                case GameState.Chase:
+                    if (hintLeft > 0f)
+                    {
+                        hud.Text("YOU CANNOT STOP", 0.5f, 0.38f, 56f, new Color(1f, 0.85f, 0.25f));
+                        hud.Text("A / D  OR  LEFT / RIGHT  TO TURN", 0.5f, 0.45f, 30f, Color.white);
+                    }
                     break;
 
                 case GameState.Lost:
+                {
                     hud.Dim(new Color(0f, 0f, 0f, 0.5f));
-                    hud.Text("GAME OVER", 0.5f, 0.42f, 120f, LcdMid);
-                    hud.Text($"SCORE {Sim.ApplesEaten:00}", 0.5f, 0.55f, 44f, Color.white);
+                    bool retro = Look < 0.5f;
+                    hud.Text(retro ? "GAME OVER" : "YOU CRASHED", 0.5f, 0.42f, 120f, retro ? LcdMid : new Color(0.9f, 0.15f, 0.12f));
+                    if (retro) hud.Text($"SCORE {Sim.ApplesEaten:00}", 0.5f, 0.55f, 44f, Color.white);
                     if (stateTime > RestartDelay) hud.Text("PRESS SPACE", 0.5f, 0.66f, 38f, Color.white);
                     break;
+                }
             }
 
             // White flash at the moment the world flips.
