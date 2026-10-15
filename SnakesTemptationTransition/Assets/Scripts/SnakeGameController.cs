@@ -11,8 +11,8 @@ namespace SnakesTemptation
     /// <summary>
     /// Snake's Temptation (trimmed). A retro LCD Snake; eat <see cref="applesToFlip"/> apples and the world turns 3D: the board
     /// opens out into a hedge maze and the camera drops in behind the snake. In <see cref="GameState.Chase"/> the snake keeps
-    /// moving and is steered left / right relative to itself; running into a hedge or a tree is game over. (No monster, seeds,
-    /// lives yet. Lantern navigation and objective guidance are enabled.)
+    /// moving and is steered left / right; an apple monster now hunts the snake through the maze. The lantern compass
+    /// remains active. Collision ends the run (lives, respawning and cutscenes are not part of this batch).
     /// </summary>
     public sealed class SnakeGameController : MonoBehaviour
     {
@@ -39,6 +39,9 @@ namespace SnakesTemptation
         [Header("Pacing (seconds per step; lower = faster)")]
         public float retroInterval = 0.13f;
         public float chaseInterval = ChaseTuning.SnakeInterval;
+        public float monsterIntervalStart = ChaseTuning.MonsterStart;
+        public float monsterIntervalMin = ChaseTuning.MonsterMin;
+        public float monsterSpeedUpPerSecond = ChaseTuning.MonsterPerSecond;
 
         [Header("Audio")]
         [Range(0f, 1f), Tooltip("Overall volume. Everything is silent on the title screen and only starts with the game.")]
@@ -50,6 +53,7 @@ namespace SnakesTemptation
         // Timeline of the flip, in seconds from the moment the last 2D apple is eaten.
         public const float GlitchEnd = 0.8f;   // screen corrupts, shakes
         public const float MorphEnd = 2.6f;    // white flash at GlitchEnd, then 2D -> 3D, maze rises
+        public const float MonsterEmergeEnd = 3.7f; // monster rises before chasing
 
         static readonly Color LcdDark = new Color32(15, 56, 15, 255);
         static readonly Color LcdMid = new Color32(139, 172, 15, 255);
@@ -72,6 +76,10 @@ namespace SnakesTemptation
         PowerupView powerupView;
         PowerupRules lanternRules;
         SnakeView snakeView;
+        MonsterView monsterView;
+        Vector2Int monsterSpawnCell;
+        bool monsterSpawned;
+        float monsterAcc, chaseTime, monsterRise = 1f;
         CameraRig rig;
         RetroAudio audioFx;
         Hud hud;
@@ -93,7 +101,7 @@ namespace SnakesTemptation
 
         void Awake()
         {
-            if (art == null || art.retroBase == null)
+            if (art == null || art.retroBase == null || art.monsterPrefab == null)
                 Debug.LogError("SnakeGameController: art set is incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
             if (cam == null) cam = Camera.main;
 
@@ -173,6 +181,11 @@ namespace SnakesTemptation
                 RespawnDelay = lanternRespawnDelay
             };
             snakeView = new SnakeView(worldRoot, grid, art);
+            monsterView = null;
+            monsterSpawned = false;
+            monsterAcc = 0f;
+            chaseTime = 0f;
+            monsterRise = 1f;
 
             State = GameState.Title;
             stateTime = 0f;
@@ -197,6 +210,7 @@ namespace SnakesTemptation
         public void Rebuild(int newSeed)
         {
             seed = newSeed;
+            if (monsterView != null) monsterView.Dispose();
             Destroy(worldRoot.gameObject);
             BuildWorld();
         }
@@ -282,8 +296,10 @@ namespace SnakesTemptation
                     break;
 
                 case GameState.Chase:
+                    chaseTime += dt;
                     hintLeft = Mathf.Max(0f, hintLeft - dt);
                     RunSnakeClock(dt, chaseInterval);
+                    if (State == GameState.Chase) RunMonsterClock(dt);
                     if (State == GameState.Chase) lanternRules.Tick(dt, Sim);
                     break;
 
@@ -309,6 +325,8 @@ namespace SnakesTemptation
         float RestartDelay => 0.8f;
 
         float CurrentSnakeInterval => State == GameState.Chase ? chaseInterval : retroInterval;
+        float CurrentMonsterInterval => ChaseTuning.MonsterInterval(monsterIntervalStart, monsterIntervalMin,
+            ChaseTuning.MonsterPerSeed, Sim.CollectedSeeds.Count, chaseTime, monsterSpeedUpPerSecond);
 
         void RunSnakeClock(float dt, float interval)
         {
@@ -340,6 +358,32 @@ namespace SnakesTemptation
 
             audioFx.Eat();
             if (State == GameState.Retro && Sim.ApplesEaten >= applesToFlip) BeginTransition();
+            else if (State == GameState.Chase && Sim.ConsumeMonsterRelocation() && monsterView != null)
+            {
+                // A new seed was unreachable safely; re-position the monster behind the snake.
+                monsterView.Teleport(Sim.Monster);
+                monsterRise = 0f;
+                monsterAcc = -ChaseTuning.RespawnGrace;
+            }
+        }
+
+        void RunMonsterClock(float dt)
+        {
+            if (monsterView == null || !Sim.MonsterActive) return;
+            monsterAcc += dt;
+            float interval = CurrentMonsterInterval;
+            while (monsterAcc >= interval && State == GameState.Chase)
+            {
+                monsterAcc -= interval;
+                StepResult r = Sim.StepMonster();
+                if (r.Moved)
+                {
+                    monsterView.OnStep(Sim.Monster);
+                    int distance = Sim.PathDistanceToMonster();
+                    audioFx.Step(Mathf.Clamp01(1f - distance / 18f) * 0.8f);
+                }
+                if (r.Died) Lose();
+            }
         }
 
         // ===================================================================================== the flip
@@ -352,6 +396,8 @@ namespace SnakesTemptation
 
             // The rules change now (the sim is frozen during the flip); the visuals follow over the next few seconds.
             var setup = ChaseSetup.Begin(Sim, Maze, treesPerRoom, startPlazaTrees);
+            monsterSpawnCell = setup.MonsterSpawn;
+            monsterSpawned = false;
             arena.PlantTrees(setup.Trees);
             mazeView.Show();
             audioFx.StopMusic();
@@ -362,12 +408,22 @@ namespace SnakesTemptation
         {
             Look = MathX.Smooth01(Mathf.InverseLerp(GlitchEnd, MorphEnd, stateTime));
 
-            if (stateTime >= MorphEnd)
+            if (!monsterSpawned && stateTime >= MorphEnd)
+            {
+                monsterSpawned = true;
+                monsterView = new MonsterView(worldRoot, grid, art, monsterSpawnCell);
+                audioFx.Roar();
+                rig.Impulse(0.8f);
+            }
+
+            if (stateTime >= MonsterEmergeEnd)
             {
                 State = GameState.Chase;
                 stateTime = 0f;
                 Look = 1f;
                 snakeAcc = 0f;
+                monsterAcc = -ChaseTuning.MonsterGrace;
+                chaseTime = 0f;
                 hintLeft = 9f;
                 lanternRules.Start();
                 rig.Impulse(0.4f);
@@ -410,6 +466,15 @@ namespace SnakesTemptation
             snakeView.Refresh(Sim, snakeP, Look, globalTime, dt);
             appleView.Refresh(Sim, Look, globalTime, lanternGlow);
             powerupView.Refresh(Sim, Look, globalTime);
+
+            if (monsterView != null)
+            {
+                monsterRise = Mathf.MoveTowards(monsterRise, 1f, dt);
+                float emerge = State == GameState.Transition
+                    ? Mathf.InverseLerp(MorphEnd, MonsterEmergeEnd, stateTime) : monsterRise;
+                float monsterP = State == GameState.Chase ? Mathf.Clamp01(monsterAcc / CurrentMonsterInterval) : 1f;
+                monsterView.Refresh(monsterP, emerge, globalTime, dt);
+            }
 
             // Camera: the flip drives the blend; in the 3D world it rides behind the snake's head.
             rig.Blend = Look;

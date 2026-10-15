@@ -45,11 +45,12 @@ namespace SnakesTemptation
     public sealed class ChaseSetupResult
     {
         public readonly List<Vector2Int> Trees = new List<Vector2Int>();
+        public Vector2Int MonsterSpawn;
     }
 
     /// <summary>
     /// What happens to the rules when the world flips from the retro board to the maze: the hedges appear, the whole map
-    /// comes into play and trees are planted in the open areas. (The monster, seeds and respawn logic were removed.)
+    /// comes into play, trees are planted, and the monster is spawned behind the snake.
     /// </summary>
     public static class ChaseSetup
     {
@@ -67,6 +68,21 @@ namespace SnakesTemptation
                 result.Trees.AddRange(sim.PlaceTreesAmong(MazeMap.Interior(room, 2), treesPerRoom, 0));
             var plazaCells = MazeMap.Interior(maze.Start, 2).FindAll(c => Mathf.Abs(c.y - maze.Size / 2) > ChaseTuning.SpawnClearBand);
             result.Trees.AddRange(sim.PlaceTreesAmong(plazaCells, startPlazaTrees, 7));
+
+            // Spawn behind the snake along a reachable maze route, never in a hedge or tree.
+            result.MonsterSpawn = sim.PickMonsterSpawnBehind(ChaseTuning.MonsterSpawnMin, ChaseTuning.MonsterSpawnMax);
+            sim.SpawnMonster(result.MonsterSpawn);
+
+            // Place the next seed in an open plaza, away from the monster where possible.
+            sim.CollectedSeeds.Clear();
+            sim.SeedMinSpacing = ChaseTuning.SeedSpacing;
+            sim.RelocateMonsterForSeed = true;
+            sim.RelocateMinPath = ChaseTuning.MonsterSpawnMin;
+            sim.RelocateMaxPath = ChaseTuning.MonsterSpawnMax;
+            sim.SetSeedCandidates(maze.RoomCells());
+            sim.SpawnApple();
+            sim.ConsumeMonsterRelocation();
+            result.MonsterSpawn = sim.Monster;
             return result;
         }
 

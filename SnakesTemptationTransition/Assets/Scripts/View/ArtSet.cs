@@ -32,5 +32,8 @@ namespace SnakesTemptation
         public Material seedBeam;  // the pillar of light that marks it
         public Material lantern;      // the lantern powerup's glowing orb
         public Material lanternBeam;  // its short beacon
+
+        [Header("Enemy")]
+        public GameObject monsterPrefab;
     }
 }

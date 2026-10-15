@@ -51,6 +51,7 @@ public static class SnakeSceneBuilder
             pupil = Lit("Pupil", new Color(0.02f, 0.02f, 0.02f), 0.8f),
             lantern = Lit("Lantern", new Color(1f, 0.92f, 0.7f), 0.5f, new Color(3.0f, 2.2f, 0.9f)),
             lanternBeam = Lit("LanternBeam", new Color(1f, 0.9f, 0.6f), 0.0f, new Color(1.3f, 1.0f, 0.5f)),
+            monsterPrefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Art/AppleMonster/AppleMonster.prefab"),
             seed = Lit("Seed", new Color(0.30f, 0.12f, 0.03f), 0.85f, new Color(1.15f, 0.48f, 0.04f)),
             seedBeam = Lit("SeedBeam", new Color(0.9f, 0.5f, 0.05f), 0.0f, new Color(1.0f, 0.5f, 0.06f)),
         };
