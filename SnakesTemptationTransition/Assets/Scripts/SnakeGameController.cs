@@ -12,7 +12,7 @@ namespace SnakesTemptation
     /// Snake's Temptation (trimmed). A retro LCD Snake; eat <see cref="applesToFlip"/> apples and the world turns 3D: the board
     /// opens out into a hedge maze and the camera drops in behind the snake. In <see cref="GameState.Chase"/> the snake keeps
     /// moving and is steered left / right relative to itself; running into a hedge or a tree is game over. (No monster, seeds,
-    /// lanterns or lives yet.)
+    /// lives yet. Lantern navigation and objective guidance are enabled.)
     /// </summary>
     public sealed class SnakeGameController : MonoBehaviour
     {
@@ -30,6 +30,11 @@ namespace SnakesTemptation
         [Tooltip("Open plazas besides the starting one.")] public int roomCount = ChaseTuning.RoomCount;
         public int treesPerRoom = ChaseTuning.TreesPerRoom;
         public int startPlazaTrees = ChaseTuning.StartPlazaTrees;
+
+        [Header("Lantern navigation")]
+        public float lanternSeconds = ChaseTuning.PowerupDuration;
+        public float firstLanternDelay = ChaseTuning.PowerupFirstDelay;
+        public float lanternRespawnDelay = ChaseTuning.PowerupRespawnDelay;
 
         [Header("Pacing (seconds per step; lower = faster)")]
         public float retroInterval = 0.13f;
@@ -64,6 +69,8 @@ namespace SnakesTemptation
         ArenaView arena;
         MazeView mazeView;
         AppleView appleView;
+        PowerupView powerupView;
+        PowerupRules lanternRules;
         SnakeView snakeView;
         CameraRig rig;
         RetroAudio audioFx;
@@ -158,6 +165,13 @@ namespace SnakesTemptation
             arena = new ArenaView(worldRoot, grid, art, RetroRect);
             mazeView = new MazeView(worldRoot, grid, art, Maze, RetroRect);
             appleView = new AppleView(worldRoot, grid, art);
+            powerupView = new PowerupView(worldRoot, grid, art);
+            lanternRules = new PowerupRules
+            {
+                Duration = lanternSeconds,
+                FirstDelay = firstLanternDelay,
+                RespawnDelay = lanternRespawnDelay
+            };
             snakeView = new SnakeView(worldRoot, grid, art);
 
             State = GameState.Title;
@@ -270,6 +284,7 @@ namespace SnakesTemptation
                 case GameState.Chase:
                     hintLeft = Mathf.Max(0f, hintLeft - dt);
                     RunSnakeClock(dt, chaseInterval);
+                    if (State == GameState.Chase) lanternRules.Tick(dt, Sim);
                     break;
 
                 case GameState.Lost:
@@ -315,6 +330,12 @@ namespace SnakesTemptation
                 Lose();
                 return;
             }
+            if (r.GotPowerup && State == GameState.Chase)
+            {
+                lanternRules.Collect();
+                audioFx.Chime();
+                rig.Impulse(0.12f);
+            }
             if (!r.Ate) return;
 
             audioFx.Eat();
@@ -348,6 +369,7 @@ namespace SnakesTemptation
                 Look = 1f;
                 snakeAcc = 0f;
                 hintLeft = 9f;
+                lanternRules.Start();
                 rig.Impulse(0.4f);
                 audioFx.PlayMusic(true);
             }
@@ -383,9 +405,11 @@ namespace SnakesTemptation
             float interval = CurrentSnakeInterval;
             bool snakeMoving = State == GameState.Retro || State == GameState.Chase;
             float snakeP = snakeMoving ? Mathf.Clamp01(snakeAcc / interval) : 1f;
-            snakeView.SetGlow(0f, globalTime);
+            float lanternGlow = State == GameState.Chase && lanternRules.Revealed ? 1f : 0f;
+            snakeView.SetGlow(lanternGlow, globalTime);
             snakeView.Refresh(Sim, snakeP, Look, globalTime, dt);
-            appleView.Refresh(Sim, Look, globalTime, 0f);
+            appleView.Refresh(Sim, Look, globalTime, lanternGlow);
+            powerupView.Refresh(Sim, Look, globalTime);
 
             // Camera: the flip drives the blend; in the 3D world it rides behind the snake's head.
             rig.Blend = Look;
@@ -456,12 +480,38 @@ namespace SnakesTemptation
                     break;
 
                 case GameState.Chase:
+                {
+                    Color gold = new Color(1f, 0.85f, 0.25f);
+                    if (lanternRules.Revealed)
+                    {
+                        hud.Bar(lanternRules.GlowLeft / Mathf.Max(0.01f, lanternRules.Duration), gold);
+                        hud.Text($"LANTERN  {Mathf.CeilToInt(lanternRules.GlowLeft)}", 0.02f, 0.15f, 28f, gold, true);
+                    }
+                    Vector3 fwd = snakeView.HeadForward;
+                    fwd.y = 0f;
+                    if (lanternRules.Revealed && Sim.HasApple)
+                    {
+                        Vector3 to = grid.ToWorld(Sim.Apple) - snakeView.HeadWorld;
+                        to.y = 0f;
+                        hud.Arrow(Vector3.SignedAngle(fwd, to, Vector3.up), gold);
+                        hud.Text($"OBJECTIVE  {SnakeSim.Manhattan(Sim.Apple, Sim.Head)}", 0.09f, 0.88f, 30f, gold);
+                    }
+                    else if (Sim.HasPowerup)
+                    {
+                        Vector3 to = grid.ToWorld(Sim.Powerup) - snakeView.HeadWorld;
+                        to.y = 0f;
+                        Color warm = new Color(1f, 0.95f, 0.75f);
+                        hud.Arrow(Vector3.SignedAngle(fwd, to, Vector3.up), warm);
+                        hud.Text($"LANTERN  {SnakeSim.Manhattan(Sim.Powerup, Sim.Head)}", 0.09f, 0.88f, 30f, warm);
+                    }
                     if (hintLeft > 0f)
                     {
-                        hud.Text("YOU CANNOT STOP", 0.5f, 0.38f, 56f, new Color(1f, 0.85f, 0.25f));
+                        hud.Text("YOU CANNOT STOP", 0.5f, 0.38f, 56f, gold);
                         hud.Text("A / D  OR  LEFT / RIGHT  TO TURN", 0.5f, 0.45f, 30f, Color.white);
+                        hud.Text("FOLLOW THE ARROW TO A LANTERN", 0.5f, 0.50f, 26f, gold);
                     }
                     break;
+                }
 
                 case GameState.Lost:
                 {
