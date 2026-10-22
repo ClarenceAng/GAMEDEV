@@ -3,8 +3,6 @@ using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using StarterAssets;
 
-// Counts the buttons, opens the door at the end and shows the text on the screen.
-// Every hit takes away 20 HP. At 0 HP the level starts again.
 public class StealthGame : MonoBehaviour
 {
     public int maxHealth = 100;
@@ -33,27 +31,38 @@ public class StealthGame : MonoBehaviour
     void Start()
     {
         doorStartY = door.position.y;
+
+        textStyle = new GUIStyle();
+        textStyle.fontSize = 24;
+        textStyle.fontStyle = FontStyle.Bold;
+        textStyle.normal.textColor = Color.white;
+
+        messageStyle = new GUIStyle(textStyle);
+        messageStyle.fontSize = 36;
+        messageStyle.alignment = TextAnchor.MiddleCenter;
+
+        controlsStyle = new GUIStyle(textStyle);
+        controlsStyle.alignment = TextAnchor.UpperRight;
     }
 
     void Update()
     {
-        // press R to restart
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
         {
             RestartLevel();
         }
 
-        // slide the door up into the ceiling
         if (doorOpen && door.position.y < doorStartY + doorOpenHeight)
         {
             door.position = door.position + Vector3.up * doorSpeed * Time.deltaTime;
         }
 
-        // the goal sits right behind the door, so stepping onto the green part means you made it
         if (gameOver == false && player.position.z > goal.position.z)
         {
             gameOver = true;
             ShowMessage("You escaped!", 5f);
+
+            // start again in 5 seconds
             Invoke("RestartLevel", 5f);
         }
     }
@@ -62,7 +71,7 @@ public class StealthGame : MonoBehaviour
     {
         buttonsPressed = buttonsPressed + 1;
 
-        if (buttonsPressed >= buttonsNeeded)
+        if (buttonsPressed == buttonsNeeded)
         {
             doorOpen = true;
             ShowMessage("All the buttons are pressed - the door is open!", 3f);
@@ -75,6 +84,7 @@ public class StealthGame : MonoBehaviour
 
     public void PlayerHit(string what)
     {
+        // no more hits after the game is over, or right after you got hit
         if (gameOver || Time.time < invulnerableUntil)
         {
             return;
@@ -99,7 +109,6 @@ public class StealthGame : MonoBehaviour
         }
     }
 
-    // the +20 HP power up. gives back false if health is already full
     public bool Heal(int amount)
     {
         if (health >= maxHealth)
@@ -128,25 +137,10 @@ public class StealthGame : MonoBehaviour
 
     void OnGUI()
     {
-        // scale everything so it looks the same on any screen size
+
         float scale = Screen.height / 720f;
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
         float width = Screen.width / scale;
-
-        if (textStyle == null)
-        {
-            textStyle = new GUIStyle(GUI.skin.label);
-            textStyle.fontSize = 24;
-            textStyle.fontStyle = FontStyle.Bold;
-            textStyle.normal.textColor = Color.white;
-
-            messageStyle = new GUIStyle(textStyle);
-            messageStyle.fontSize = 36;
-            messageStyle.alignment = TextAnchor.MiddleCenter;
-
-            controlsStyle = new GUIStyle(textStyle);
-            controlsStyle.alignment = TextAnchor.UpperRight;
-        }
 
         GUI.Label(new Rect(20, 16, 400, 36), "HP: " + health, textStyle);
         GUI.Label(new Rect(20, 50, 400, 36), "Buttons: " + buttonsPressed + " / " + buttonsNeeded, textStyle);
@@ -156,8 +150,6 @@ public class StealthGame : MonoBehaviour
         GUI.Label(new Rect(width - 420, 50, 400, 36), "E = press button", controlsStyle);
         GUI.Label(new Rect(width - 420, 84, 400, 36), "R = restart", controlsStyle);
 
-        // a little + in the middle so you can aim at the buttons
-        GUI.Label(new Rect(width / 2f - 20f, 360f - 20f, 40f, 40f), "+", messageStyle);
 
         if (Time.time < messageEndTime)
         {

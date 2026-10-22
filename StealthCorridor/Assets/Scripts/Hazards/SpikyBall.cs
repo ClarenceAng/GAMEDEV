@@ -1,7 +1,6 @@
 using UnityEngine;
 
-// Goes on the pivot at the top of the rope. Swings the spiky ball from side to side like a pendulum.
-// The rope and the ball are children of the pivot, so turning the pivot swings them too.
+
 public class SpikyBall : MonoBehaviour
 {
     public Transform ball;

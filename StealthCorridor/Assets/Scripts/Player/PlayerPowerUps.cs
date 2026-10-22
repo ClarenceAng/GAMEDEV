@@ -23,17 +23,14 @@ public class PlayerPowerUps : MonoBehaviour
     bool speedActive = false;
     bool jumpActive = false;
 
-    void Awake()
+    void Start()
     {
         controller = GetComponent<FirstPersonController>();
+        game = FindFirstObjectByType<StealthGame>();
+
         baseMoveSpeed = controller.MoveSpeed;
         baseSprintSpeed = controller.SprintSpeed;
         baseJumpHeight = controller.JumpHeight;
-    }
-
-    void Start()
-    {
-        game = FindFirstObjectByType<StealthGame>();
     }
 
     void Update()
@@ -49,7 +46,8 @@ public class PlayerPowerUps : MonoBehaviour
         }
     }
 
-    // the panels on the floor dont have a script, we check their name when we walk into them
+    // the panels on the floor dont have a script, so we check their name when we walk into them.
+    // the names can have a number on the end like "PowerUp_Speed (1)", so we only check the start
     void OnTriggerEnter(Collider other)
     {
         bool used = false;

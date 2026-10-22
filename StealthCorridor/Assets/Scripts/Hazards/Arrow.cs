@@ -1,11 +1,14 @@
 using UnityEngine;
 
-// An arrow made out of a cylinder and some cubes. It flies forward (the blue arrow in the scene view),
-// then jumps back to where it started and flies again.
-// Every arrow uses one of the physics checks to see if it touched the player.
 public class Arrow : MonoBehaviour
 {
-    public enum CheckType { Sphere, Box, Capsule, Raycast }
+    public enum CheckType
+    {
+        Sphere,
+        Box,
+        Capsule,
+        Raycast
+    }
 
     public CheckType checkType = CheckType.Sphere;
     public float speed = 5f;
@@ -56,23 +59,23 @@ public class Arrow : MonoBehaviour
 
         if (checkType == CheckType.Sphere)
         {
-            // a small ball around the tip
+            // is the player inside a small ball around the tip
             return Physics.CheckSphere(tip, thickness * 2f, playerLayer);
         }
         else if (checkType == CheckType.Box)
         {
-            // a box around the whole arrow
+            // is the player inside a box around the whole arrow
             Vector3 halfSize = new Vector3(thickness, thickness, length / 2f);
             return Physics.CheckBox(transform.position, halfSize, transform.rotation, playerLayer);
         }
         else if (checkType == CheckType.Capsule)
         {
-            // a capsule from the back of the arrow to the tip
+            // is the player inside a capsule from the back of the arrow to the tip
             return Physics.CheckCapsule(tail, tip, thickness, playerLayer);
         }
         else
         {
-            // a line from the back of the arrow to the tip
+            // does a line from the back of the arrow to the tip touch the player
             return Physics.Raycast(tail, transform.forward, length, playerLayer);
         }
     }

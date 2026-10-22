@@ -24,11 +24,15 @@ public class HiddenButton : MonoBehaviour
 
         if (flashlight.enabled)
         {
-            // is the button inside the light cone and close enough?
+            // how far away is the button?
+            float distance = Vector3.Distance(flashlight.transform.position, transform.position);
+
+            // how far off to the side of the light is the button? (0 = right in the middle)
             Vector3 toButton = transform.position - flashlight.transform.position;
             float angle = Vector3.Angle(flashlight.transform.forward, toButton);
 
-            if (angle < flashlight.spotAngle / 2f && toButton.magnitude < flashlight.range)
+            // spotAngle is the whole cone, so half of it is the edge of the light
+            if (angle < flashlight.spotAngle / 2f && distance < flashlight.range)
             {
                 isLit = true;
             }

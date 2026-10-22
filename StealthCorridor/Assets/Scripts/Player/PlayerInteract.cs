@@ -1,7 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Goes on the player. Press E to shoot a ray out of the camera and press the button you are looking at.
 public class PlayerInteract : MonoBehaviour
 {
     public float reach = 4f;
@@ -17,10 +16,12 @@ public class PlayerInteract : MonoBehaviour
     public void PressButton()
     {
         Transform cam = Camera.main.transform;
+
         RaycastHit hit;
 
         if (Physics.Raycast(cam.position, cam.forward, out hit, reach))
         {
+            // only buttons have the HiddenButton script, so this is null for walls and floors
             HiddenButton button = hit.collider.GetComponent<HiddenButton>();
             if (button != null)
             {
