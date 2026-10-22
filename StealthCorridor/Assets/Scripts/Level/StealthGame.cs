@@ -42,8 +42,8 @@ public class StealthGame : MonoBehaviour
             door.position = door.position + Vector3.up * doorSpeed * Time.deltaTime;
         }
 
-        // made it past the door to the end
-        if (gameOver == false && Vector3.Distance(player.position, goal.position) < 2f)
+        // the goal sits right behind the door, so stepping onto the green part means you made it
+        if (gameOver == false && player.position.z > goal.position.z)
         {
             gameOver = true;
             ShowMessage("You escaped!", 5f);
