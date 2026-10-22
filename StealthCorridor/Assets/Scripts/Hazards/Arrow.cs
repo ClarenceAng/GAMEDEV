@@ -44,7 +44,7 @@ public class Arrow : MonoBehaviour
 
         if (TouchingPlayer())
         {
-            game.PlayerCaught("an arrow (" + checkType + " check)");
+            game.PlayerHit("an arrow (" + checkType + " check)");
         }
     }
 

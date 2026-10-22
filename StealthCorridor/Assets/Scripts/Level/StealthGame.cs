@@ -3,9 +3,13 @@ using UnityEngine.SceneManagement;
 using StarterAssets;
 
 // Counts the buttons, opens the door at the end and shows the text on the screen.
-// If an arrow hits you the level starts again.
+// Every hit takes away 20 HP. At 0 HP the level starts again.
 public class StealthGame : MonoBehaviour
 {
+    public int maxHealth = 100;
+    public int health = 100;
+    public int damagePerHit = 20;
+    public float invulnerableSeconds = 1f; // so one hit doesnt take away HP every frame
     public int buttonsNeeded = 5;
     public int buttonsPressed = 0;
     public Transform player;
@@ -17,6 +21,7 @@ public class StealthGame : MonoBehaviour
     bool doorOpen = false;
     bool gameOver = false;
     float doorStartY;
+    float invulnerableUntil;
 
     string message = "";
     float messageEndTime;
@@ -60,19 +65,30 @@ public class StealthGame : MonoBehaviour
         }
     }
 
-    public void PlayerCaught(string what)
+    public void PlayerHit(string what)
     {
-        if (gameOver)
+        if (gameOver || Time.time < invulnerableUntil)
         {
             return;
         }
 
-        gameOver = true;
-        ShowMessage("You got hit by " + what + "!", 3f);
+        health = health - damagePerHit;
+        invulnerableUntil = Time.time + invulnerableSeconds;
 
-        // stop the player from moving and start again
-        player.GetComponent<FirstPersonController>().enabled = false;
-        Invoke("RestartLevel", 2.5f);
+        if (health <= 0)
+        {
+            health = 0;
+            gameOver = true;
+            ShowMessage("Hit by " + what + "! No HP left - back to the start", 3f);
+
+            // stop the player from moving and start again
+            player.GetComponent<FirstPersonController>().enabled = false;
+            Invoke("RestartLevel", 2.5f);
+        }
+        else
+        {
+            ShowMessage("Hit by " + what + "! -" + damagePerHit + " HP", 1.5f);
+        }
     }
 
     void RestartLevel()
@@ -105,8 +121,9 @@ public class StealthGame : MonoBehaviour
             messageStyle.alignment = TextAnchor.MiddleCenter;
         }
 
-        GUI.Label(new Rect(20, 16, 400, 36), "Buttons: " + buttonsPressed + " / " + buttonsNeeded, textStyle);
-        GUI.Label(new Rect(20, 50, 600, 36), "F = flashlight     E = press button", textStyle);
+        GUI.Label(new Rect(20, 16, 400, 36), "HP: " + health, textStyle);
+        GUI.Label(new Rect(20, 50, 400, 36), "Buttons: " + buttonsPressed + " / " + buttonsNeeded, textStyle);
+        GUI.Label(new Rect(20, 84, 600, 36), "F = flashlight     E = press button", textStyle);
 
         // a little + in the middle so you can aim at the buttons
         GUI.Label(new Rect(width / 2f - 20f, 360f - 20f, 40f, 40f), "+", messageStyle);
