@@ -42,7 +42,7 @@ public class LaserProjectile : MonoBehaviour
 
         if (Physics.CheckCapsule(end1, end2, radius, playerLayer))
         {
-            game.PlayerHit("a laser (Capsule check)");
+            game.PlayerHit("a laser");
         }
     }
 }

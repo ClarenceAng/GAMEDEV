@@ -27,6 +27,7 @@ public class StealthGame : MonoBehaviour
     float messageEndTime;
     GUIStyle textStyle;
     GUIStyle messageStyle;
+    GUIStyle controlsStyle;
 
     void Start()
     {
@@ -79,7 +80,7 @@ public class StealthGame : MonoBehaviour
         {
             health = 0;
             gameOver = true;
-            ShowMessage("Hit by " + what + "! No HP left - back to the start", 3f);
+            ShowMessage("No HP left - back to the start!", 3f);
 
             // stop the player from moving and start again
             player.GetComponent<FirstPersonController>().enabled = false;
@@ -87,8 +88,24 @@ public class StealthGame : MonoBehaviour
         }
         else
         {
-            ShowMessage("Hit by " + what + "! -" + damagePerHit + " HP", 1.5f);
+            ShowMessage("You got hit by " + what + "!", 1.5f);
         }
+    }
+
+    // the +20 HP power up. gives back false if health is already full
+    public bool Heal(int amount)
+    {
+        if (health >= maxHealth)
+        {
+            return false;
+        }
+
+        health = health + amount;
+        if (health > maxHealth)
+        {
+            health = maxHealth;
+        }
+        return true;
     }
 
     void RestartLevel()
@@ -119,11 +136,17 @@ public class StealthGame : MonoBehaviour
             messageStyle = new GUIStyle(textStyle);
             messageStyle.fontSize = 36;
             messageStyle.alignment = TextAnchor.MiddleCenter;
+
+            controlsStyle = new GUIStyle(textStyle);
+            controlsStyle.alignment = TextAnchor.UpperRight;
         }
 
         GUI.Label(new Rect(20, 16, 400, 36), "HP: " + health, textStyle);
         GUI.Label(new Rect(20, 50, 400, 36), "Buttons: " + buttonsPressed + " / " + buttonsNeeded, textStyle);
-        GUI.Label(new Rect(20, 84, 600, 36), "F = flashlight     E = press button", textStyle);
+
+        // controls in the top right
+        GUI.Label(new Rect(width - 420, 16, 400, 36), "F = flashlight", controlsStyle);
+        GUI.Label(new Rect(width - 420, 50, 400, 36), "E = press button", controlsStyle);
 
         // a little + in the middle so you can aim at the buttons
         GUI.Label(new Rect(width / 2f - 20f, 360f - 20f, 40f, 40f), "+", messageStyle);

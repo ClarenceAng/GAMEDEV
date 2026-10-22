@@ -27,7 +27,7 @@ public class SpikyBall : MonoBehaviour
         // a ball around the spiky ball
         if (Physics.CheckSphere(ball.position, hitRadius, playerLayer))
         {
-            game.PlayerHit("a spiky ball (Sphere check)");
+            game.PlayerHit("a spiky ball");
         }
     }
 }
