@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using StarterAssets;
 
@@ -36,6 +37,12 @@ public class StealthGame : MonoBehaviour
 
     void Update()
     {
+        // press R to restart
+        if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
+        {
+            RestartLevel();
+        }
+
         // slide the door up into the ceiling
         if (doorOpen && door.position.y < doorStartY + doorOpenHeight)
         {
@@ -147,6 +154,7 @@ public class StealthGame : MonoBehaviour
         // controls in the top right
         GUI.Label(new Rect(width - 420, 16, 400, 36), "F = flashlight", controlsStyle);
         GUI.Label(new Rect(width - 420, 50, 400, 36), "E = press button", controlsStyle);
+        GUI.Label(new Rect(width - 420, 84, 400, 36), "R = restart", controlsStyle);
 
         // a little + in the middle so you can aim at the buttons
         GUI.Label(new Rect(width / 2f - 20f, 360f - 20f, 40f, 40f), "+", messageStyle);
