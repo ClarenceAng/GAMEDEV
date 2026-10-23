@@ -1,3 +1,20 @@
 GummiShip/Library
 GummiShip/Temp
 GummiShip/.vscode
+
+# Ray-OE Zoning
+RayOEZoning/Library/
+RayOEZoning/Temp/
+RayOEZoning/Obj/
+RayOEZoning/Logs/
+RayOEZoning/UserSettings/
+RayOEZoning/Build/
+RayOEZoning/Builds/
+RayOEZoning/MemoryCaptures/
+RayOEZoning/Recordings/
+RayOEZoning/.vs/
+RayOEZoning/.vscode/
+RayOEZoning/.idea/
+RayOEZoning/*.csproj
+RayOEZoning/*.sln
+RayOEZoning/*.slnx
