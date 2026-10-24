@@ -4,7 +4,8 @@
     "references": [
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
-        "SnakesTemptation"
+        "SnakesTemptation",
+        "SnakesTemptation.Tests.Common"
     ],
     "includePlatforms": [
         "Editor"

@@ -149,17 +149,9 @@ GummiShip/Temp
 GummiShip/.vscode
 
 
-# SnakesTemptationTransition generated files
-SnakesTemptationTransition/Library/
-SnakesTemptationTransition/Temp/
-SnakesTemptationTransition/Obj/
-SnakesTemptationTransition/Logs/
-SnakesTemptationTransition/UserSettings/
-
-
-# SnakesTemptationEnding generated files
-SnakesTemptationEnding/[Ll]ibrary/
-SnakesTemptationEnding/[Tt]emp/
-SnakesTemptationEnding/[Oo]bj/
-SnakesTemptationEnding/[Ll]ogs/
-SnakesTemptationEnding/[Uu]ser[Ss]ettings/
+# SnakesTemptation generated files
+SnakesTemptation/[Ll]ibrary/
+SnakesTemptation/[Tt]emp/
+SnakesTemptation/[Oo]bj/
+SnakesTemptation/[Ll]ogs/
+SnakesTemptation/[Uu]ser[Ss]ettings/
