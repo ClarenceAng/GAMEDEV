@@ -5,8 +5,9 @@
 //
 // Menu: Tools > Snake's Temptation > Build Apple Monster
 //
-// Output (Assets/Art/AppleMonster):
-//   AppleMonster.prefab, Meshes/, Materials/, Textures/
+// Output:
+//   Assets/Prefabs/AppleMonster.prefab
+//   Assets/Meshes/AppleMonster/, Assets/Materials/AppleMonster/, Assets/Textures/AppleMonster/
 //
 // Conventions: pivot on the ground between the roots, monster faces +Z, ~1.9 m tall.
 
@@ -22,7 +23,10 @@ using Object = UnityEngine.Object;
 
 public static class AppleMonsterBuilder
 {
-    const string Dir = "Assets/Art/AppleMonster";
+    const string PrefabDir = "Assets/Prefabs";
+    const string MeshDir = "Assets/Meshes/AppleMonster";
+    const string MaterialDir = "Assets/Materials/AppleMonster";
+    const string TextureDir = "Assets/Textures/AppleMonster";
     const int Seed = 1895; // year The King in Yellow was published
 
     // Apple body: radius, vertical stretch, and where the body centre floats above the ground.
@@ -54,9 +58,10 @@ public static class AppleMonsterBuilder
         try
         {
             rng = new System.Random(Seed);
-            Directory.CreateDirectory(Dir + "/Meshes");
-            Directory.CreateDirectory(Dir + "/Materials");
-            Directory.CreateDirectory(Dir + "/Textures");
+            Directory.CreateDirectory(PrefabDir);
+            Directory.CreateDirectory(MeshDir);
+            Directory.CreateDirectory(MaterialDir);
+            Directory.CreateDirectory(TextureDir);
 
             // ---- textures
             var texApple = SaveTexture("AppleSkin", 1024, 512, (u, v) => AppleColor(DirUV(u, v)), false);
@@ -114,7 +119,7 @@ public static class AppleMonsterBuilder
             AddPart(crownGo, "Seeds", SaveMesh(seeds, "Seeds"), mSeed);
             AddPart(crownGo, "Leaf", SaveMesh(leaf, "Leaf"), mLeaf);
 
-            string prefabPath = Dir + "/AppleMonster.prefab";
+            string prefabPath = PrefabDir + "/AppleMonster.prefab";
             var prefab = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
             Object.DestroyImmediate(go);
             AssetDatabase.SaveAssets();
@@ -851,7 +856,7 @@ public static class AppleMonsterBuilder
 
     static Texture2D SaveTexture(string name, int w, int h, Func<float, float, Color> f, bool alpha)
     {
-        string path = $"{Dir}/Textures/AppleMonster_{name}.png";
+        string path = $"{TextureDir}/AppleMonster_{name}.png";
         var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
         var px = new Color32[w * h];
         for (int y = 0; y < h; y++)
@@ -875,7 +880,7 @@ public static class AppleMonsterBuilder
     static Mesh SaveMesh(MeshBuilder mb, string name)
     {
         Mesh m = mb.ToMesh("AppleMonster_" + name);
-        string path = $"{Dir}/Meshes/AppleMonster_{name}.asset";
+        string path = $"{MeshDir}/AppleMonster_{name}.asset";
         var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
         if (existing != null)
         {
@@ -890,7 +895,7 @@ public static class AppleMonsterBuilder
 
     static Material Mat(string name, Color baseColor, Texture2D tex, float smoothness, Color? emission = null, bool cutout = false)
     {
-        string path = $"{Dir}/Materials/AppleMonster_{name}.mat";
+        string path = $"{MaterialDir}/AppleMonster_{name}.mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (m == null)
         {

@@ -18,9 +18,21 @@ using UnityEngine.Rendering.Universal;
 
 public static class SnakeSceneBuilder
 {
-    const string MatDir = "Assets/Materials/SnakesTemptation";
+    const string MatDir = "Assets/Materials";
+    const string TexDir = "Assets/Textures/Maze";
     const string ScenePath = "Assets/Scenes/SnakesTemptation.unity";
-    const string MonsterPrefab = "Assets/Art/AppleMonster/AppleMonster.prefab";
+    const string MonsterPrefab = "Assets/Prefabs/AppleMonster.prefab";
+
+    // Material name -> subfolder of MatDir, so the Project window is grouped by what each material is for.
+    static readonly Dictionary<string, string> MatFolders = new Dictionary<string, string>
+    {
+        { "SnakeBody", "Snake" }, { "SnakeHead", "Snake" }, { "EyeWhite", "Snake" }, { "Pupil", "Snake" }, { "RetroSnake", "Snake" },
+        { "Seed", "Seed" }, { "SeedBeam", "Seed" },
+        { "Trunk", "Trees" }, { "Foliage", "Trees" },
+        { "Hedge", "Maze" }, { "Ground", "Maze" }, { "TileA", "Maze" }, { "TileB", "Maze" }, { "PlazaA", "Maze" }, { "PlazaB", "Maze" },
+        { "RetroBase", "Retro" }, { "RetroTileA", "Retro" }, { "RetroTileB", "Retro" }, { "RetroBorder", "Retro" }, { "RetroSprite", "Retro" },
+        { "Lantern", "Powerups" }, { "LanternBeam", "Powerups" },
+    };
 
     [MenuItem("Tools/Snake's Temptation/Build Snake Scene")]
     public static void Build()
@@ -29,7 +41,6 @@ public static class SnakeSceneBuilder
         if (monster == null)
             throw new InvalidOperationException($"Missing {MonsterPrefab}. Run Tools > Snake's Temptation > Build Apple Monster first.");
 
-        Directory.CreateDirectory(MatDir);
         Directory.CreateDirectory("Assets/Scenes");
 
         // Game Boy LCD palette (darkest .. lightest): 0f380f 306230 8bac0f 9bbc0f
@@ -93,7 +104,7 @@ public static class SnakeSceneBuilder
         scenes.Insert(0, new EditorBuildSettingsScene(ScenePath, true)); // the game is the first scene
         EditorBuildSettings.scenes = scenes.ToArray();
 
-        Debug.Log($"[SnakesTemptation] Built {ScenePath} and materials in {MatDir}");
+        Debug.Log($"[SnakesTemptation] Built {ScenePath} and materials under {MatDir}");
     }
 
     // Headless entry point: Unity -batchmode -executeMethod SnakeSceneBuilder.BuildBatch -quit
@@ -111,7 +122,8 @@ public static class SnakeSceneBuilder
     static Texture2D LeafTexture()
     {
         const int N = 256;
-        string path = $"{MatDir}/HedgeLeaves.png";
+        Directory.CreateDirectory(TexDir);
+        string path = $"{TexDir}/HedgeLeaves.png";
         var tex = new Texture2D(N, N, TextureFormat.RGBA32, false);
         var px = new Color32[N * N];
         for (int j = 0; j < N; j++)
@@ -158,10 +170,12 @@ public static class SnakeSceneBuilder
 
     static Material Get(string name, string shaderName)
     {
-        string path = $"{MatDir}/{name}.mat";
+        string folder = MatFolders.TryGetValue(name, out var sub) ? $"{MatDir}/{sub}" : MatDir;
+        string path = $"{folder}/{name}.mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (m == null)
         {
+            Directory.CreateDirectory(folder);
             var shader = Shader.Find(shaderName);
             if (shader == null) throw new InvalidOperationException("Shader not found: " + shaderName);
             m = new Material(shader);
