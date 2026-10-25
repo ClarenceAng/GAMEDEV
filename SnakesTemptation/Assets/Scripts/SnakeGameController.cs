@@ -20,6 +20,8 @@ namespace SnakesTemptation
     {
         [Header("Assets (filled by Tools > Snake's Temptation > Build Snake Scene)")]
         public ArtSet art;
+        [Tooltip("WAV files under Assets/Audio (Sfx and Music).")]
+        public SoundSet sounds;
         public Camera cam;
         public Light sun;
 
@@ -149,6 +151,8 @@ namespace SnakesTemptation
         {
             if (art == null || art.monsterPrefab == null || art.retroBase == null)
                 Debug.LogError("SnakeGameController: art set is incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
+            if (sounds == null || !sounds.IsComplete)
+                Debug.LogError("SnakeGameController: sound set is incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
             if (cam == null) cam = Camera.main;
 
             savedFog = RenderSettings.fog;
@@ -159,6 +163,7 @@ namespace SnakesTemptation
             savedAmbientMode = RenderSettings.ambientMode;
 
             audioFx = gameObject.AddComponent<RetroAudio>();
+            audioFx.Load(sounds);
             SetupPost();
             hud = new Hud(transform, cam);
             BuildWorld();
