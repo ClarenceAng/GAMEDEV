@@ -1,153 +1,143 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SnakesTemptation
+// draws the snake. in the retro look every segment is a flat square that jumps from cell to cell,
+// in 3D the segments are balls that slide between cells and the head gets eyes.
+// the head also carries a light, its the only light you have in the dark maze
+public class SnakeView
 {
-    /// <summary>
-    /// The snake. In the retro look every segment is a flat square that jumps cell to cell like an LCD pixel; in 3D the
-    /// segments become tapered, wiggling spheres that glide between cells, and the head grows eyes.
-    /// </summary>
-    sealed class SnakeView
+    public Vector3 HeadWorld;                   // where the head is right now (between cells)
+    public Vector3 HeadForward = Vector3.forward;
+
+    GridMap grid;
+    ArtSet art;
+    Transform root;
+    Transform headRig;
+    Light torch;
+    Material bodyMaterial;
+    Material headMaterial;
+    List<Transform> squares = new List<Transform>();        // retro segments
+    List<Transform> balls = new List<Transform>();          // 3D segments
+    List<Vector2Int> previous = new List<Vector2Int>();     // where the segments were before the last step
+    float glow;
+    Quaternion headRotation = Quaternion.identity;
+    bool hasRotation;
+
+    public SnakeView(Transform parent, GridMap grid, ArtSet art)
     {
-        readonly GridMap grid;
-        readonly ArtSet art;
-        readonly Transform root;
-        readonly Transform headRig;
-        readonly Light headLight;
-        readonly MaterialPropertyBlock glowBlock = new MaterialPropertyBlock();
-        float glow, glowTime;
-        readonly List<Transform> seg = new List<Transform>();
-        readonly List<MeshFilter> segMf = new List<MeshFilter>();
-        readonly List<MeshRenderer> segMr = new List<MeshRenderer>();
-        readonly List<Vector2Int> prev = new List<Vector2Int>();
-        bool lit;
-        bool haveRot;
-        Quaternion headRot = Quaternion.identity;
+        this.grid = grid;
+        this.art = art;
+        root = new GameObject("Snake").transform;
+        root.SetParent(parent, false);
 
-        public SnakeView(Transform parent, GridMap grid, ArtSet art)
+        // copies of the materials so we can change the glow without changing the real assets
+        bodyMaterial = new Material(art.snakeBody);
+        headMaterial = new Material(art.snakeHead);
+
+        // the eyes and the light follow the head
+        headRig = new GameObject("HeadRig").transform;
+        headRig.SetParent(root, false);
+        for (int side = -1; side <= 1; side += 2)
         {
-            this.grid = grid;
-            this.art = art;
-            root = new GameObject("Snake").transform;
-            root.SetParent(parent, false);
+            Transform eye = ShapeMaker.MakeNoShadow(PrimitiveType.Sphere, "Eye", art.eyeWhite, headRig);
+            eye.localPosition = new Vector3(side * 0.26f, 0.2f, 0.3f);
+            eye.localScale = new Vector3(0.3f, 0.3f, 0.3f);
+            Transform pupil = ShapeMaker.MakeNoShadow(PrimitiveType.Sphere, "Pupil", art.pupil, eye);
+            pupil.localPosition = new Vector3(0f, 0f, 0.42f);
+            pupil.localScale = new Vector3(0.55f, 0.55f, 0.55f);
+        }
+        // the light has shadows on so it doesn't shine through the hedges
+        torch = ShapeMaker.MakeLight("Torch", headRig, Color.white, 6.5f, 3f);
+        torch.transform.localPosition = new Vector3(0f, 1.5f, 0f);
+        torch.shadows = LightShadows.Soft;
+        torch.shadowBias = 0.05f;
+        headRig.gameObject.SetActive(false);
+    }
 
-            // Eyes live on an unscaled rig that follows the head so the squashed retro cube can't distort them.
-            headRig = new GameObject("HeadRig").transform;
-            headRig.SetParent(root, false);
-            for (int side = -1; side <= 1; side += 2)
+    // 0 = just the torch, 1 = the lantern is lit and the snake glows
+    public void SetGlow(float amount)
+    {
+        glow = Mathf.Clamp01(amount);
+    }
+
+    // the snake got teleported so don't slide it there
+    public void ResetMotion()
+    {
+        previous.Clear();
+    }
+
+    // remember where the segments were before a step so we can slide them
+    public void OnStep(List<Vector2Int> before)
+    {
+        previous.Clear();
+        previous.AddRange(before);
+    }
+
+    void AddSegment()
+    {
+        squares.Add(ShapeMaker.MakeNoShadow(PrimitiveType.Cube, "Segment", art.retroSnake, root));
+        Material mat = bodyMaterial;
+        if (balls.Count == 0) mat = headMaterial;
+        balls.Add(ShapeMaker.Make(PrimitiveType.Sphere, "Segment3D", mat, root));
+    }
+
+    public void Refresh(SnakeSim sim, float progress, float look, float time, float dt)
+    {
+        int n = sim.Snake.Count;
+        bool is3D = look > 0.35f;
+        headRig.gameObject.SetActive(is3D);
+        while (squares.Count < n) AddSegment();
+
+        // the light gets bigger when the lantern is lit
+        torch.range = Mathf.Lerp(6.5f, 18f, glow);
+        torch.intensity = Mathf.Lerp(3.0f, 9.5f, glow) * (1f + 0.04f * Mathf.Sin(time * 13f));
+        torch.color = Color.Lerp(new Color(1f, 0.80f, 0.52f), new Color(1f, 0.93f, 0.58f), glow);
+        Color glowColor = new Color(0.35f, 0.9f, 0.2f) * Mathf.Lerp(0.30f, 2.0f, glow);
+        bodyMaterial.SetColor("_EmissionColor", glowColor);
+        headMaterial.SetColor("_EmissionColor", glowColor);
+
+        // turn the head smoothly
+        Quaternion target = Quaternion.LookRotation(new Vector3(sim.Heading.x, 0f, sim.Heading.y));
+        if (!hasRotation)
+        {
+            headRotation = target;
+            hasRotation = true;
+        }
+        else
+        {
+            headRotation = Quaternion.Slerp(headRotation, target, dt * 18f);
+        }
+        HeadForward = headRotation * Vector3.forward;
+
+        float p = Mathf.Lerp(1f, progress, look); // the retro snake doesn't slide, it jumps
+        for (int i = 0; i < n; i++)
+        {
+            Vector2Int cell = sim.Snake[i];
+            Vector2Int from = cell;
+            if (previous.Count > 0) from = previous[Mathf.Min(i, previous.Count - 1)];
+            Vector3 pos = Vector3.Lerp(grid.ToWorld(from), grid.ToWorld(cell), p);
+
+            squares[i].localPosition = new Vector3(pos.x, 0.05f, pos.z);
+            squares[i].localScale = new Vector3(0.86f, 0.1f, 0.86f);
+
+            // the balls get smaller towards the tail
+            float size = 0.98f;
+            if (i > 0) size = 0.8f * Mathf.Lerp(1f, 0.6f, i / (float)(n - 1));
+            Vector3 ballPos = new Vector3(pos.x, size * 0.5f, pos.z);
+            balls[i].localPosition = ballPos;
+            balls[i].localScale = new Vector3(size, size, size);
+
+            if (i == 0)
             {
-                var eye = Prims.Make("Eye", Prims.Sphere, art.eyeWhite, headRig, false, false);
-                eye.localPosition = new Vector3(side * 0.26f, 0.2f, 0.3f);
-                eye.localScale = Vector3.one * 0.3f;
-                var pupil = Prims.Make("Pupil", Prims.Sphere, art.pupil, eye, false, false);
-                pupil.localPosition = new Vector3(0f, 0f, 0.42f);
-                pupil.localScale = Vector3.one * 0.55f;
+                HeadWorld = ballPos;
+                headRig.localPosition = ballPos;
+                headRig.localRotation = headRotation;
             }
-            // A torch carried by the head: all the light you have in the dark maze. It casts shadows so that it
-            // stays inside the corridor instead of shining through the hedges.
-            headLight = new GameObject("Torch").AddComponent<Light>();
-            headLight.transform.SetParent(headRig, false);
-            headLight.transform.localPosition = new Vector3(0f, 1.5f, 0f);
-            headLight.type = LightType.Point;
-            headLight.shadows = LightShadows.Soft;
-            headLight.shadowBias = 0.05f;
-            headRig.gameObject.SetActive(false);
         }
-
-        /// <summary>0 = just the torch, 1 = the lantern is lit: the snake glows and lights a wide area.</summary>
-        public void SetGlow(float glow01, float time)
+        for (int i = 0; i < squares.Count; i++)
         {
-            glow = Mathf.Clamp01(glow01);
-            glowTime = time;
-        }
-
-        /// <summary>Forget where the segments were: the snake has been put somewhere new, so do not slide it there.</summary>
-        public void ResetMotion() => prev.Clear();
-
-        /// <summary>World position of the head (interpolated between cells).</summary>
-        public Vector3 HeadWorld => headRig.localPosition;
-
-        /// <summary>The way the head is facing (smoothed through turns).</summary>
-        public Vector3 HeadForward => headRot * Vector3.forward;
-
-        /// <summary>Remember where the segments were before a step so the move can be interpolated.</summary>
-        public void OnStep(List<Vector2Int> before)
-        {
-            prev.Clear();
-            prev.AddRange(before);
-        }
-
-        void AddSegment()
-        {
-            var t = Prims.Make("Segment", Prims.Cube, art.retroSnake, root);
-            seg.Add(t);
-            segMf.Add(t.GetComponent<MeshFilter>());
-            segMr.Add(t.GetComponent<MeshRenderer>());
-            Style(seg.Count - 1);
-        }
-
-        void Style(int i)
-        {
-            segMf[i].sharedMesh = lit ? Prims.Sphere : Prims.Cube;
-            segMr[i].sharedMaterial = lit ? (i == 0 ? art.snakeHead : art.snakeBody) : art.retroSnake;
-        }
-
-        public void Refresh(SnakeSim sim, float progress, float look, float time, float dt)
-        {
-            int n = sim.Snake.Count;
-            bool nowLit = look > 0.35f;
-            if (nowLit != lit)
-            {
-                lit = nowLit;
-                for (int i = 0; i < seg.Count; i++) Style(i);
-                headRig.gameObject.SetActive(lit);
-            }
-            while (seg.Count < n) AddSegment();
-
-            // Torch and glow (only meaningful in the lit 3D look).
-            float flicker = 1f + 0.04f * Mathf.Sin(glowTime * 13f) + 0.02f * Mathf.Sin(glowTime * 31f);
-            headLight.range = Mathf.Lerp(6.5f, 18f, glow);
-            headLight.intensity = Mathf.Lerp(3.0f, 9.5f, glow) * flicker;
-            headLight.color = Color.Lerp(new Color(1f, 0.80f, 0.52f), new Color(1f, 0.93f, 0.58f), glow);
-            glowBlock.SetColor("_EmissionColor", new Color(0.35f, 0.9f, 0.2f) * Mathf.Lerp(0.30f, 2.0f, glow));
-
-            Vector2Int h = sim.Heading;
-            Quaternion target = Quaternion.LookRotation(new Vector3(h.x, 0f, h.y));
-            headRot = haveRot ? Quaternion.Slerp(headRot, target, 1f - Mathf.Exp(-18f * dt)) : target;
-            haveRot = true;
-
-            float p = Mathf.Lerp(1f, progress, look); // retro: no in-between frames
-            for (int i = 0; i < n; i++)
-            {
-                Vector2Int cur = sim.Snake[i];
-                Vector2Int from = prev.Count == 0 ? cur : prev[Mathf.Min(i, prev.Count - 1)];
-                Vector3 pos = Vector3.Lerp(grid.ToWorld(from), grid.ToWorld(cur), p);
-
-                float taper = Mathf.Lerp(1f, 0.6f, n > 1 ? i / (float)(n - 1) : 0f);
-                float litS = i == 0 ? 0.98f : 0.8f * taper;
-                seg[i].localScale = Vector3.Lerp(new Vector3(0.86f, 0.1f, 0.86f), Vector3.one * litS, look);
-                pos.y = Mathf.Lerp(0.05f, litS * 0.5f + 0.01f, look);
-
-                if (look > 0f && i > 0)
-                {
-                    Vector3 d = grid.ToWorld(sim.Snake[i - 1]) - grid.ToWorld(sim.Snake[Mathf.Min(i + 1, n - 1)]);
-                    d.y = 0f;
-                    if (d.sqrMagnitude > 0.001f)
-                    {
-                        d.Normalize();
-                        pos += new Vector3(-d.z, 0f, d.x) * (Mathf.Sin(time * 7f - i * 0.9f) * 0.07f * look);
-                    }
-                }
-                seg[i].localPosition = pos;
-                if (lit) segMr[i].SetPropertyBlock(glowBlock);
-
-                if (i == 0)
-                {
-                    headRig.localPosition = pos;
-                    headRig.localRotation = headRot;
-                }
-            }
-            for (int i = 0; i < seg.Count; i++) seg[i].gameObject.SetActive(i < n);
+            squares[i].gameObject.SetActive(i < n && !is3D);
+            balls[i].gameObject.SetActive(i < n && is3D);
         }
     }
 }

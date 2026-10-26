@@ -1,125 +1,119 @@
 using UnityEngine;
 
-namespace SnakesTemptation
+// one camera does both looks.
+// retro (Blend = 0): really high up with a tiny field of view, so it looks flat like the old snake game.
+// chase (Blend = 1): behind the snake, looking down a bit, and it turns with the snake.
+// in between everything just gets lerped, which looks like falling into the board
+public class CameraRig
 {
-    /// <summary>
-    /// One perspective camera does both looks.
-    ///
-    /// Retro (<see cref="Blend"/> = 0): it hangs very high with a very narrow field of view, which is visually
-    /// indistinguishable from the flat orthographic view of the retro game.
-    ///
-    /// Chase (<see cref="Blend"/> = 1): a third-person camera close behind the snake, tilted down, that swings around
-    /// corners with it and looks a little ahead of the head.
-    ///
-    /// Blending between them dollies in while widening the field of view (a dolly-zoom) and tilts down, so the flip feels
-    /// like falling into the board. No projection-matrix tricks needed.
-    /// </summary>
-    sealed class CameraRig
+    public float Blend;         // 0 = retro, 1 = chase
+    public float Shake;         // 0 to 1, the game sets this during the glitch
+    public float FovKick;       // extra field of view that goes away by itself (for the jumpscare)
+    public Vector3 FollowPos;   // where the snake head is
+    public Vector3 FollowHeading = Vector3.forward;
+
+    Camera cam;
+    GameEvents events;
+    float yaw;
+    bool hasYaw;
+    float impulse;              // shake from events
+    Vector3 focus;
+    bool snap;
+
+    public CameraRig(Camera camera)
     {
-        const float RetroDistance = 90f;
-        const float ChaseFov = 68f;
-        const float ChasePitch = 32f;       // degrees below horizontal
-        const float ChaseRadius = 5.6f;     // half-height of the view slice around the snake: smaller = closer
-        const float LookAhead = 2.2f;       // cells in front of the head the camera aims at
+        cam = camera;
+    }
 
-        readonly Camera cam;
-        readonly float retroW, retroH;
-        Vector3 focus, focusVel;
-        float yaw, yawVel;
-        float impulse;
-        bool haveYaw, snap;
+    public void Impulse(float amount)
+    {
+        impulse = Mathf.Max(impulse, amount);
+    }
 
-        public float Blend;                 // 0 = flat retro view, 1 = third-person chase
-        public float Shake;                 // continuous shake amount (0..1)
-        public Vector3 FollowPos;           // world position of the snake's head
-        public float FovKick;               // degrees added to the field of view and then relaxed (the jumpscare's lens punch)
-        public Vector3 FollowHeading = Vector3.forward; // horizontal unit vector the snake is heading in
+    // shake the camera when stuff happens
+    public void Listen(GameEvents gameEvents)
+    {
+        if (gameEvents == null || !gameEvents.IsComplete) return;
+        events = gameEvents;
+        events.lanternCollected.Register(OnLanternCollected);
+        events.monsterRelocated.Register(OnMonsterRelocated);
+        events.monsterRose.Register(OnMonsterRose);
+        events.snakeCrashed.Register(OnSnakeCrashed);
+        events.snakeDevoured.Register(OnSnakeDevoured);
+        events.snakeRespawned.Register(OnSnakeRespawned);
+    }
 
-        public CameraRig(Camera cam, int retroWidth, int retroHeight)
+    // has to be called when the game is destroyed because the event assets stay around
+    public void Dispose()
+    {
+        if (events == null) return;
+        events.lanternCollected.Unregister(OnLanternCollected);
+        events.monsterRelocated.Unregister(OnMonsterRelocated);
+        events.monsterRose.Unregister(OnMonsterRose);
+        events.snakeCrashed.Unregister(OnSnakeCrashed);
+        events.snakeDevoured.Unregister(OnSnakeDevoured);
+        events.snakeRespawned.Unregister(OnSnakeRespawned);
+        events = null;
+    }
+
+    void OnLanternCollected() { Impulse(0.12f); }
+    void OnMonsterRelocated() { Impulse(0.45f); }
+    void OnMonsterRose() { Impulse(0.9f); }
+    void OnSnakeCrashed() { Impulse(1f); }
+    void OnSnakeDevoured() { Impulse(2.2f); FovKick = 22f; }
+    void OnSnakeRespawned() { Impulse(0.25f); }
+
+    // jump straight to the snake instead of moving there (after a respawn)
+    public void Snap()
+    {
+        snap = true;
+        hasYaw = false;
+    }
+
+    public void Tick(float dt)
+    {
+        float b = Mathf.Clamp01(Blend);
+        float pitch = Mathf.Lerp(90f, 32f, b);      // straight down -> 32 degrees down
+        float fov = Mathf.Lerp(16f, 68f, b);
+        // how much we can see goes from the whole board to just around the snake,
+        // and the distance is worked out from the fov so it zooms in smoothly
+        float viewSize = Mathf.Lerp(12.7f, 5.6f, b);
+        float distance = viewSize / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
+
+        // turn around behind the snake when it turns
+        Vector3 heading = FollowHeading;
+        if (heading.sqrMagnitude < 0.01f) heading = Vector3.forward;
+        float targetYaw = Mathf.Atan2(heading.x, heading.z) * Mathf.Rad2Deg;
+        if (!hasYaw || dt <= 0f)
         {
-            this.cam = cam;
-            retroW = retroWidth;
-            retroH = retroHeight;
+            yaw = targetYaw;
+            hasYaw = true;
         }
-
-        public void Impulse(float amount) => impulse = Mathf.Max(impulse, amount);
-
-        readonly System.Collections.Generic.List<(GameEvent channel, System.Action listener)> subscriptions =
-            new System.Collections.Generic.List<(GameEvent, System.Action)>();
-
-        /// <summary>Shakes the camera in response to the game's events (how hard depends on how dramatic the moment is).</summary>
-        public void Listen(GameEvents events)
+        else
         {
-            if (events == null) return;
-            On(events.lanternCollected, () => Impulse(0.12f));
-            On(events.monsterRelocated, () => Impulse(0.45f));
-            On(events.monsterRose, () => Impulse(0.9f));
-            On(events.snakeCrashed, () => Impulse(1f));
-            On(events.snakeDevoured, () => { Impulse(2.2f); FovKick = 22f; });
-            On(events.snakeRespawned, () => Impulse(0.25f));
+            yaw = Mathf.LerpAngle(yaw, targetYaw, dt * 8f);
         }
+        Vector3 forward = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward;
 
-        /// <summary>Stops listening. The event assets outlive the scene, so this must run when the game is destroyed.</summary>
-        public void Dispose()
-        {
-            foreach (var (channel, listener) in subscriptions) channel.Unregister(listener);
-            subscriptions.Clear();
-        }
+        // look a little bit in front of the head
+        Vector3 chaseFocus = FollowPos + forward * 2.2f + Vector3.up * 0.4f;
+        Vector3 wantFocus = Vector3.Lerp(Vector3.zero, chaseFocus, b);
+        if (snap || dt <= 0f) focus = wantFocus;
+        else focus = Vector3.Lerp(focus, wantFocus, dt * 12f);
+        snap = false;
 
-        void On(GameEvent channel, System.Action listener)
-        {
-            if (channel == null) return;
-            channel.Register(listener);
-            subscriptions.Add((channel, listener));
-        }
+        Vector3 pos = focus + Quaternion.Euler(pitch, yaw, 0f) * new Vector3(0f, 0f, -distance);
 
-        /// <summary>Jump straight to wherever the snake is now instead of swooping there (used when it respawns).</summary>
-        public void Snap()
-        {
-            snap = true;
-            haveYaw = false;
-            yawVel = 0f;
-        }
+        float shakeAmount = Mathf.Max(Shake, impulse) * 0.18f;
+        if (shakeAmount > 0f) pos += Random.insideUnitSphere * shakeAmount;
+        impulse = Mathf.MoveTowards(impulse, 0f, dt * 2.2f);
 
-        /// <summary>The camera's current heading (degrees around the vertical axis), smoothed through turns.</summary>
-        public float Yaw => yaw;
+        if (dt > 0f) FovKick = Mathf.Lerp(FovKick, 0f, dt * 5f);
+        cam.fieldOfView = fov + FovKick;
 
-        public void Tick(float dt)
-        {
-            float s = Mathf.Clamp01(Blend);
-            float aspect = Mathf.Max(0.5f, cam.aspect);
-            float halfH = retroH * 0.5f + 1.5f;
-            float halfW = retroW * 0.5f + 1.5f;
-            float r0 = Mathf.Max(halfH, halfW / aspect) * 1.06f;   // retro: whole board + bezel visible
-
-            float fov0 = 2f * Mathf.Atan(r0 / RetroDistance) * Mathf.Rad2Deg;
-            float fov = Mathf.Lerp(fov0, ChaseFov, s);
-            float radius = Mathf.Lerp(r0, ChaseRadius, s);
-            float dist = radius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
-            float pitch = Mathf.Lerp(90f, ChasePitch, s) * Mathf.Deg2Rad;
-
-            // Swing around behind the snake as it turns.
-            Vector3 h = FollowHeading.sqrMagnitude > 0.01f ? FollowHeading.normalized : Vector3.forward;
-            float targetYaw = Mathf.Atan2(h.x, h.z) * Mathf.Rad2Deg;
-            if (!haveYaw || dt <= 0f) { yaw = targetYaw; haveYaw = true; }
-            else yaw = Mathf.SmoothDampAngle(yaw, targetYaw, ref yawVel, 0.22f);
-            Vector3 fwd = new Vector3(Mathf.Sin(yaw * Mathf.Deg2Rad), 0f, Mathf.Cos(yaw * Mathf.Deg2Rad));
-
-            Vector3 want = Vector3.Lerp(Vector3.zero, FollowPos + fwd * LookAhead + Vector3.up * 0.4f, s);
-            if (snap) { focus = want; focusVel = Vector3.zero; }
-            else focus = dt > 0f ? Vector3.SmoothDamp(focus, want, ref focusVel, 0.10f, 200f, dt) : want;
-            snap = false;
-
-            Vector3 pos = focus + (-fwd * Mathf.Cos(pitch) + Vector3.up * Mathf.Sin(pitch)) * dist;
-            float amp = Mathf.Max(Shake, impulse) * 0.18f;
-            if (amp > 0f) pos += Random.insideUnitSphere * amp;
-            impulse = Mathf.MoveTowards(impulse, 0f, dt * 2.2f);
-
-            // Straight down needs a "which way is up on screen" hint; once tilted, plain world-up is right.
-            Vector3 upHint = Vector3.Slerp(Vector3.forward, Vector3.up, MathX.Smooth(0.1f, 0.5f, s));
-            if (dt > 0f) FovKick = Mathf.Lerp(FovKick, 0f, 1f - Mathf.Exp(-5f * dt));
-            cam.fieldOfView = fov + FovKick;
-            cam.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(focus - pos, upHint));
-        }
+        // when looking straight down "up" on the screen has to be forward, otherwise it's just up
+        Vector3 upHint = Vector3.Lerp(Vector3.forward, Vector3.up, b * 2f);
+        cam.transform.position = pos;
+        cam.transform.LookAt(focus, upHint);
     }
 }

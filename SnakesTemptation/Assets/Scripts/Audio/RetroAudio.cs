@@ -1,163 +1,188 @@
-using System.Collections.Generic;
 using UnityEngine;
 
-namespace SnakesTemptation
+// plays all the sounds and music. it listens to the game events so the game never has to tell it what to play.
+// it starts muted and nothing plays until the game unmutes it (so the title screen is quiet)
+public class RetroAudio : MonoBehaviour
 {
-    /// <summary>
-    /// Plays the game's sounds (square-wave blips, a rumble, a roar, three music loops). They are WAV files under
-    /// Assets/Audio, handed over by the controller through <see cref="Load"/>; nothing is synthesised while the game runs.
-    /// It never needs to be told what to play: it listens to the game's events (<see cref="Listen"/>) and reacts to them.
-    ///
-    /// Two rules keep it from ever being a surprise:
-    ///  - It starts <see cref="Muted"/>. Nothing can make a sound (not even a direct call) until the controller unmutes it
-    ///    when the game starts.
-    ///  - Every clip is peak-normalised to a modest level in its file, and then scaled by <see cref="Master"/>, so the
-    ///    overall level is a single slider (SnakeGameController.audioVolume).
-    /// </summary>
-    public sealed class RetroAudio : MonoBehaviour
+    public float Master = 0.4f;     // overall volume
+    public bool Muted = true;
+    public int PlaysRequested;      // how many sounds were started (the tests check this)
+    public int VoicesPlayed;
+
+    AudioSource sfx;
+    AudioSource music;
+    AudioSource voice;
+    SoundSet clips;
+    GameEvents events;
+    float musicTarget;
+
+    public AudioClip[] AllClips
     {
-        AudioSource sfx, music, voice;
-        SoundSet clips;
-        readonly List<(GameEvent channel, System.Action listener)> subscriptions = new List<(GameEvent, System.Action)>();
-        float musicTarget;
-        bool muted = true;
+        get { return clips.All; }
+    }
 
-        /// <summary>0..1 overall volume. Applied on top of the per-clip levels.</summary>
-        public float Master { get; set; } = 0.4f;
+    void Awake()
+    {
+        sfx = gameObject.AddComponent<AudioSource>();
+        sfx.playOnAwake = false;
 
-        /// <summary>While muted nothing plays. Muting also cuts anything already playing.</summary>
-        public bool Muted
+        music = gameObject.AddComponent<AudioSource>();
+        music.playOnAwake = false;
+        music.loop = true;
+        music.volume = 0f;
+
+        voice = gameObject.AddComponent<AudioSource>();
+        voice.playOnAwake = false;
+
+        if (clips == null) clips = ScriptableObject.CreateInstance<SoundSet>();
+    }
+
+    public void Load(SoundSet set)
+    {
+        if (set != null) clips = set;
+        else clips = ScriptableObject.CreateInstance<SoundSet>();
+    }
+
+    public void SetMuted(bool mute)
+    {
+        Muted = mute;
+        if (mute)
         {
-            get => muted;
-            set
-            {
-                muted = value;
-                if (value) Silence();
-            }
-        }
-
-        /// <summary>How many sounds have actually been started. Lets tests prove that silence is silence.</summary>
-        public int PlaysRequested { get; private set; }
-
-        public IReadOnlyList<AudioClip> AllClips => clips.All;
-
-        /// <summary>How many voice clips have been started (the ending's voice acting).</summary>
-        public int VoicesPlayed { get; private set; }
-
-        void Awake()
-        {
-            sfx = gameObject.AddComponent<AudioSource>();
-            sfx.playOnAwake = false;
-            sfx.spatialBlend = 0f;
-            music = gameObject.AddComponent<AudioSource>();
-            music.playOnAwake = false;
-            music.loop = true;
-            music.spatialBlend = 0f;
-            music.volume = 0f;
-            voice = gameObject.AddComponent<AudioSource>();
-            voice.playOnAwake = false;
-            voice.spatialBlend = 0f;
-            if (clips == null) clips = ScriptableObject.CreateInstance<SoundSet>();
-        }
-
-        void OnDestroy()
-        {
-            foreach (var (channel, listener) in subscriptions) channel.Unregister(listener);
-            subscriptions.Clear();
-        }
-
-        /// <summary>The clips to play. A missing clip is simply silent.</summary>
-        public void Load(SoundSet set) => clips = set != null ? set : ScriptableObject.CreateInstance<SoundSet>();
-
-        /// <summary>Starts reacting to the game's events with sound and music.</summary>
-        public void Listen(GameEvents events)
-        {
-            if (events == null) return;
-            On(events.retroStarted, () => PlayMusic(false));
-            On(events.pickupEaten, Eat);
-            On(events.worldFlipped, () => { StopMusic(); Flip(); });
-            On(events.monsterRose, Roar);
-            On(events.chaseStarted, () => PlayMusic(true));
-            On(events.lanternCollected, Chime);
-            On(events.lanternExpired, Dim);
-            On(events.snakeCrashed, () => { StopMusic(); Die(); });
-            On(events.snakeDevoured, () => { StopMusic(); Jumpscare(); });
-            On(events.snakeRespawned, () => { Respawn(); PlayMusic(true); });
-            On(events.gameWon, () => { StopMusic(); Win(); });
-            On(events.endingStarted, () => { StopMusic(); PlayGardenMusic(); });
-            On(events.seedPlanted, Plant);
-            On(events.treeGrew, Grow);
-            On(events.serpentHissed, Hiss);
-            On(events.appleBitten, Crunch);
-        }
-
-        void On(GameEvent channel, System.Action listener)
-        {
-            if (channel == null) return;
-            channel.Register(listener);
-            subscriptions.Add((channel, listener));
-        }
-
-        void Update() => music.volume = Mathf.MoveTowards(music.volume, muted ? 0f : musicTarget * Master, Time.unscaledDeltaTime * 1.5f);
-
-        public void Eat() => Play(clips.eat);
-        public void Die() => Play(clips.die);
-        public void Flip() => Play(clips.flip);
-        public void Roar() => Play(clips.roar);
-        public void Win() => Play(clips.win);
-        public void Chime() => Play(clips.chime);     // a lantern was collected
-        public void Dim() => Play(clips.dim);         // the glow ran out
-        public void Jumpscare() => Play(clips.scare); // the apple monster gets you
-        public void Respawn() => Play(clips.respawn); // back for another life
-        public void Step(float volume01) => Play(clips.step, Mathf.Clamp01(volume01));
-        public void Plant() => Play(clips.plant);     // a seed goes into the ground
-        public void Grow() => Play(clips.grow);       // a tree shoots up
-        public void Crunch() => Play(clips.crunch);   // Eve takes a bite
-        public void Hiss() => Play(clips.hiss);
-        public void StopVoice() { if (voice != null) voice.Stop(); }
-
-        /// <summary>Plays a recorded voice line (for the ending). Only the master volume applies: the clip is as loud as it was recorded.</summary>
-        public void PlayVoice(AudioClip clip)
-        {
-            if (muted || clip == null) return;
-            PlaysRequested++;
-            VoicesPlayed++;
-            voice.Stop();
-            voice.clip = clip;
-            voice.volume = Mathf.Clamp01(Master * 2f);
-            voice.Play();
-        }
-
-        void Play(AudioClip clip, float gain = 1f)
-        {
-            if (muted || clip == null) return;
-            PlaysRequested++;
-            sfx.PlayOneShot(clip, gain * Master);
-        }
-
-        /// <summary>The gentle loop under the ending.</summary>
-        public void PlayGardenMusic() => StartMusic(clips.musicGarden);
-
-        public void PlayMusic(bool chase) => StartMusic(chase ? clips.musicChase : clips.musicRetro);
-
-        void StartMusic(AudioClip clip)
-        {
-            if (muted || clip == null) return;
-            PlaysRequested++;
-            music.clip = clip;
-            musicTarget = 1f;
-            music.volume = 0f; // fades in
-            music.Play();
-        }
-
-        public void StopMusic() => musicTarget = 0f;
-
-        void Silence()
-        {
+            // stop everything
             musicTarget = 0f;
-            if (music != null) { music.Stop(); music.volume = 0f; }
-            if (sfx != null) sfx.Stop();
-            if (voice != null) voice.Stop();
+            music.Stop();
+            music.volume = 0f;
+            sfx.Stop();
+            voice.Stop();
         }
+    }
+
+    public void Listen(GameEvents gameEvents)
+    {
+        if (gameEvents == null || !gameEvents.IsComplete) return;
+        events = gameEvents;
+        events.retroStarted.Register(OnRetroStarted);
+        events.pickupEaten.Register(Eat);
+        events.worldFlipped.Register(OnWorldFlipped);
+        events.monsterRose.Register(Roar);
+        events.chaseStarted.Register(OnChaseStarted);
+        events.lanternCollected.Register(Chime);
+        events.lanternExpired.Register(Dim);
+        events.snakeCrashed.Register(OnSnakeCrashed);
+        events.snakeDevoured.Register(OnSnakeDevoured);
+        events.snakeRespawned.Register(OnSnakeRespawned);
+        events.gameWon.Register(OnGameWon);
+        events.endingStarted.Register(OnEndingStarted);
+        events.seedPlanted.Register(Plant);
+        events.treeGrew.Register(Grow);
+        events.serpentHissed.Register(Hiss);
+        events.appleBitten.Register(Crunch);
+    }
+
+    void OnDestroy()
+    {
+        if (events == null) return;
+        events.retroStarted.Unregister(OnRetroStarted);
+        events.pickupEaten.Unregister(Eat);
+        events.worldFlipped.Unregister(OnWorldFlipped);
+        events.monsterRose.Unregister(Roar);
+        events.chaseStarted.Unregister(OnChaseStarted);
+        events.lanternCollected.Unregister(Chime);
+        events.lanternExpired.Unregister(Dim);
+        events.snakeCrashed.Unregister(OnSnakeCrashed);
+        events.snakeDevoured.Unregister(OnSnakeDevoured);
+        events.snakeRespawned.Unregister(OnSnakeRespawned);
+        events.gameWon.Unregister(OnGameWon);
+        events.endingStarted.Unregister(OnEndingStarted);
+        events.seedPlanted.Unregister(Plant);
+        events.treeGrew.Unregister(Grow);
+        events.serpentHissed.Unregister(Hiss);
+        events.appleBitten.Unregister(Crunch);
+    }
+
+    void OnRetroStarted() { PlayMusic(false); }
+    void OnWorldFlipped() { StopMusic(); Flip(); }
+    void OnChaseStarted() { PlayMusic(true); }
+    void OnSnakeCrashed() { StopMusic(); Die(); }
+    void OnSnakeDevoured() { StopMusic(); Jumpscare(); }
+    void OnSnakeRespawned() { Respawn(); PlayMusic(true); }
+    void OnGameWon() { StopMusic(); Win(); }
+    void OnEndingStarted() { StopMusic(); PlayGardenMusic(); }
+
+    void Update()
+    {
+        // fade the music in and out
+        float target = musicTarget * Master;
+        if (Muted) target = 0f;
+        music.volume = Mathf.MoveTowards(music.volume, target, Time.unscaledDeltaTime * 1.5f);
+    }
+
+    public void Eat() { Play(clips.eat, 1f); }
+    public void Die() { Play(clips.die, 1f); }
+    public void Flip() { Play(clips.flip, 1f); }
+    public void Roar() { Play(clips.roar, 1f); }
+    public void Win() { Play(clips.win, 1f); }
+    public void Chime() { Play(clips.chime, 1f); }
+    public void Dim() { Play(clips.dim, 1f); }
+    public void Jumpscare() { Play(clips.scare, 1f); }
+    public void Respawn() { Play(clips.respawn, 1f); }
+    public void Plant() { Play(clips.plant, 1f); }
+    public void Grow() { Play(clips.grow, 1f); }
+    public void Crunch() { Play(clips.crunch, 1f); }
+    public void Hiss() { Play(clips.hiss, 1f); }
+
+    public void Step(float volume)
+    {
+        Play(clips.step, Mathf.Clamp01(volume));
+    }
+
+    void Play(AudioClip clip, float volume)
+    {
+        if (Muted || clip == null) return;
+        PlaysRequested++;
+        sfx.PlayOneShot(clip, volume * Master);
+    }
+
+    // voice acting for the ending (we don't have any yet but it works if you add clips)
+    public void PlayVoice(AudioClip clip)
+    {
+        if (Muted || clip == null) return;
+        PlaysRequested++;
+        VoicesPlayed++;
+        voice.Stop();
+        voice.clip = clip;
+        voice.volume = Mathf.Clamp01(Master * 2f);
+        voice.Play();
+    }
+
+    public void StopVoice()
+    {
+        voice.Stop();
+    }
+
+    public void PlayMusic(bool chase)
+    {
+        if (chase) StartMusic(clips.musicChase);
+        else StartMusic(clips.musicRetro);
+    }
+
+    public void PlayGardenMusic()
+    {
+        StartMusic(clips.musicGarden);
+    }
+
+    void StartMusic(AudioClip clip)
+    {
+        if (Muted || clip == null) return;
+        PlaysRequested++;
+        music.clip = clip;
+        musicTarget = 1f;
+        music.volume = 0f; // it fades in in Update
+        music.Play();
+    }
+
+    public void StopMusic()
+    {
+        musicTarget = 0f;
     }
 }

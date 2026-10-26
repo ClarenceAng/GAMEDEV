@@ -1,165 +1,258 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SnakesTemptation
+// a wall between two maze cells
+public class MazeEdge
 {
-    /// <summary>
-    /// The 3D world: a wide hedge maze with open plazas, generated from a seed. Pure data, no GameObjects.
-    ///
-    /// The map is a grid of "maze cells" (<see cref="Coarse"/> x <see cref="Coarse"/>). Each maze cell is a 3x3 patch of floor
-    /// separated from its neighbours by a one-cell hedge line, which is what makes the corridors 3 cells wide: wide enough to
-    /// turn around in, since the snake can never stop. Plazas (open areas) are blocks of maze cells with every hedge between
-    /// them removed. The biggest sits dead centre: it is where the retro game is played, and the first plaza of the 3D world.
-    ///
-    /// Connectivity is guaranteed by randomised Kruskal over the maze cells (plazas are pre-joined), then some extra hedges
-    /// are knocked down to create loops, so there is always somewhere to run.
-    /// </summary>
-    public sealed class MazeMap
+    public int x;
+    public int y;
+    public bool right; // true = the wall between (x,y) and (x+1,y), false = between (x,y) and (x,y+1)
+}
+
+// makes the hedge maze from a seed. no game objects in here, its just the data.
+//
+// the map is a grid of "maze cells". each maze cell is 3x3 floor with a 1 cell hedge line next to it,
+// so the corridors are 3 wide (the snake can never stop so it needs room to turn around).
+// plazas are bigger open areas. the biggest one is in the middle, thats where the retro game is played.
+// the maze uses kruskal's algorithm: go through the walls in random order and knock down any wall
+// between two parts that arent connected yet. then some extra walls get knocked down so there are loops.
+public class MazeMap
+{
+    public const int Period = 4; // map cells per maze cell: 3 floor + 1 hedge
+
+    public int Coarse;      // maze cells per side
+    public int Size;        // map cells per side
+    public bool[,] Wall;    // true = hedge
+    public bool[,] Plaza;   // true = inside a plaza (the start plaza too)
+    public RectInt Start;   // the start plaza, the retro board is inside it
+    public List<RectInt> Rooms = new List<RectInt>(); // the other plazas
+    public int OpenCount;   // how many cells are not hedge
+
+    System.Random rng;
+    int[] group; // for kruskal: which group each maze cell is in
+
+    public MazeMap(int coarse, int seed, int roomCount)
     {
-        public const int Period = 4;                    // fine cells per maze cell: 3 floor + 1 hedge
-        public const int CorridorWidth = Period - 1;
+        int startBlock = 6;     // start plaza size in maze cells
+        float loops = 0.14f;    // chance to knock down each leftover wall
 
-        public readonly int Coarse;
-        public readonly int Size;                       // fine cells per side
-        public readonly bool[,] Wall;                   // true = hedge
-        public readonly bool[,] Plaza;                  // true inside any open area, the starting plaza included
-        public readonly RectInt Start;                  // the starting plaza (fine cells); the retro board is inset by one
-        public readonly List<RectInt> Rooms = new List<RectInt>(); // the other open areas (fine cells)
+        Coarse = coarse;
+        Size = Period * coarse + 1;
+        Wall = new bool[Size, Size];
+        Plaza = new bool[Size, Size];
+        rng = new System.Random(seed);
+        int C = coarse;
 
-        public MazeMap(int coarse, int seed, int roomCount, int startBlock = 6, float loops = 0.14f)
+        // ---- the plazas, in maze cells. the start plaza is in the middle, the rest are random and not touching
+        List<RectInt> blocks = new List<RectInt>();
+        int s0 = (C - startBlock) / 2;
+        blocks.Add(new RectInt(s0, s0, startBlock, startBlock));
+        int tries = 0;
+        while (blocks.Count - 1 < roomCount && tries < 600)
         {
-            Coarse = coarse;
-            Size = Period * coarse + 1;
-            Wall = new bool[Size, Size];
-            Plaza = new bool[Size, Size];
-            var rng = new System.Random(seed);
-            int C = coarse;
-
-            // ---- open areas, in maze-cell units. The start plaza is centred; the others are scattered with a gap between them.
-            var blocks = new List<RectInt>();
-            int s0 = (C - startBlock) / 2;
-            blocks.Add(new RectInt(s0, s0, startBlock, startBlock));
-            for (int tries = 0; blocks.Count - 1 < roomCount && tries < 600; tries++)
+            int w = rng.Next(2, 4);
+            int h = rng.Next(2, 4);
+            int x = rng.Next(0, C - w + 1);
+            int y = rng.Next(0, C - h + 1);
+            RectInt room = new RectInt(x, y, w, h);
+            RectInt bigger = new RectInt(room.x - 1, room.y - 1, room.width + 2, room.height + 2);
+            bool overlaps = false;
+            for (int i = 0; i < blocks.Count; i++)
             {
-                int w = rng.Next(2, 4), h = rng.Next(2, 4);
-                var r = new RectInt(rng.Next(0, C - w + 1), rng.Next(0, C - h + 1), w, h);
-                var grown = new RectInt(r.x - 1, r.y - 1, r.width + 2, r.height + 2);
-                bool clash = false;
-                foreach (var b in blocks) if (grown.Overlaps(b)) { clash = true; break; }
-                if (!clash) blocks.Add(r);
+                if (bigger.Overlaps(blocks[i])) overlaps = true;
             }
+            if (!overlaps) blocks.Add(room);
+            tries++;
+        }
 
-            // ---- union-find over maze cells; edges between cells in the same plaza start open
-            var parent = new int[C * C];
-            for (int i = 0; i < parent.Length; i++) parent[i] = i;
-            int Find(int a) { while (parent[a] != a) { parent[a] = parent[parent[a]]; a = parent[a]; } return a; }
-            bool Union(int a, int b) { a = Find(a); b = Find(b); if (a == b) return false; parent[a] = b; return true; }
+        // ---- every maze cell starts in its own group. cells in the same plaza are already joined
+        group = new int[C * C];
+        for (int i = 0; i < group.Length; i++) group[i] = i;
 
-            var openRight = new bool[C, C]; // edge (x,y)-(x+1,y)
-            var openUp = new bool[C, C];    // edge (x,y)-(x,y+1)
-            foreach (var b in blocks)
-                for (int x = b.xMin; x < b.xMax; x++)
-                    for (int y = b.yMin; y < b.yMax; y++)
+        bool[,] openRight = new bool[C, C];
+        bool[,] openUp = new bool[C, C];
+        foreach (RectInt b in blocks)
+        {
+            for (int x = b.xMin; x < b.xMax; x++)
+            {
+                for (int y = b.yMin; y < b.yMax; y++)
+                {
+                    Join(x + y * C, b.xMin + b.yMin * C);
+                    if (x + 1 < b.xMax) openRight[x, y] = true;
+                    if (y + 1 < b.yMax) openUp[x, y] = true;
+                }
+            }
+        }
+
+        // ---- kruskal
+        List<MazeEdge> edges = new List<MazeEdge>();
+        for (int x = 0; x < C; x++)
+        {
+            for (int y = 0; y < C; y++)
+            {
+                if (x + 1 < C) edges.Add(MakeEdge(x, y, true));
+                if (y + 1 < C) edges.Add(MakeEdge(x, y, false));
+            }
+        }
+        // shuffle the walls
+        for (int i = edges.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            MazeEdge temp = edges[i];
+            edges[i] = edges[j];
+            edges[j] = temp;
+        }
+        List<MazeEdge> leftover = new List<MazeEdge>();
+        foreach (MazeEdge e in edges)
+        {
+            int a = e.x + e.y * C;
+            int b;
+            if (e.right) b = e.x + 1 + e.y * C;
+            else b = e.x + (e.y + 1) * C;
+
+            if (Join(a, b))
+            {
+                if (e.right) openRight[e.x, e.y] = true;
+                else openUp[e.x, e.y] = true;
+            }
+            else
+            {
+                leftover.Add(e);
+            }
+        }
+        // ---- knock down some of the leftover walls so the maze has loops
+        foreach (MazeEdge e in leftover)
+        {
+            if (rng.NextDouble() < loops)
+            {
+                if (e.right) openRight[e.x, e.y] = true;
+                else openUp[e.x, e.y] = true;
+            }
+        }
+
+        // ---- now turn it into map cells. start with all hedge and cut out the floor
+        for (int x = 0; x < Size; x++)
+        {
+            for (int y = 0; y < Size; y++)
+            {
+                Wall[x, y] = true;
+            }
+        }
+        for (int cx = 0; cx < C; cx++)
+        {
+            for (int cy = 0; cy < C; cy++)
+            {
+                for (int i = 1; i < Period; i++)
+                {
+                    for (int j = 1; j < Period; j++)
                     {
-                        Union(x + y * C, b.xMin + b.yMin * C);
-                        if (x + 1 < b.xMax) openRight[x, y] = true;
-                        if (y + 1 < b.yMax) openUp[x, y] = true;
+                        Wall[Period * cx + i, Period * cy + j] = false;
                     }
-
-            // ---- randomised Kruskal: a spanning tree of passages joining every maze cell and plaza
-            var edges = new List<(int x, int y, bool right)>();
-            for (int x = 0; x < C; x++)
-                for (int y = 0; y < C; y++)
-                {
-                    if (x + 1 < C) edges.Add((x, y, true));
-                    if (y + 1 < C) edges.Add((x, y, false));
                 }
-            for (int i = edges.Count - 1; i > 0; i--)
-            {
-                int j = rng.Next(i + 1);
-                (edges[i], edges[j]) = (edges[j], edges[i]);
-            }
-            var leftover = new List<(int x, int y, bool right)>();
-            foreach (var e in edges)
-            {
-                int a = e.x + e.y * C, b = e.right ? e.x + 1 + e.y * C : e.x + (e.y + 1) * C;
-                if (Union(a, b))
+                if (openRight[cx, cy])
                 {
-                    if (e.right) openRight[e.x, e.y] = true; else openUp[e.x, e.y] = true;
+                    for (int j = 1; j < Period; j++) Wall[Period * cx + Period, Period * cy + j] = false;
                 }
-                else leftover.Add(e);
-            }
-            // ---- loops: knock down a share of the remaining hedges so the maze is not a tree
-            foreach (var e in leftover)
-                if (rng.NextDouble() < loops)
+                if (openUp[cx, cy])
                 {
-                    if (e.right) openRight[e.x, e.y] = true; else openUp[e.x, e.y] = true;
+                    for (int i = 1; i < Period; i++) Wall[Period * cx + i, Period * cy + Period] = false;
                 }
-
-            // ---- rasterise to fine cells
-            for (int x = 0; x < Size; x++)
-                for (int y = 0; y < Size; y++) Wall[x, y] = true;
-            for (int cx = 0; cx < C; cx++)
-                for (int cy = 0; cy < C; cy++)
-                {
-                    for (int i = 1; i < Period; i++)
-                        for (int j = 1; j < Period; j++) Wall[Period * cx + i, Period * cy + j] = false;
-                    if (openRight[cx, cy])
-                        for (int j = 1; j < Period; j++) Wall[Period * cx + Period, Period * cy + j] = false;
-                    if (openUp[cx, cy])
-                        for (int i = 1; i < Period; i++) Wall[Period * cx + i, Period * cy + Period] = false;
-                }
-            for (int bi = 0; bi < blocks.Count; bi++)
-            {
-                var b = blocks[bi];
-                var fine = new RectInt(Period * b.x + 1, Period * b.y + 1, Period * b.width - 1, Period * b.height - 1);
-                for (int x = fine.xMin; x < fine.xMax; x++)
-                    for (int y = fine.yMin; y < fine.yMax; y++)
-                    {
-                        Wall[x, y] = false;   // also opens the pillars where hedge lines used to cross
-                        Plaza[x, y] = true;
-                    }
-                if (bi == 0) Start = fine; else Rooms.Add(fine);
             }
         }
-
-        public bool InMap(Vector2Int c) => c.x >= 0 && c.y >= 0 && c.x < Size && c.y < Size;
-        public bool IsWall(Vector2Int c) => !InMap(c) || Wall[c.x, c.y];
-
-        public IEnumerable<Vector2Int> WallCells()
+        for (int bi = 0; bi < blocks.Count; bi++)
         {
-            for (int x = 0; x < Size; x++)
-                for (int y = 0; y < Size; y++)
-                    if (Wall[x, y]) yield return new Vector2Int(x, y);
+            RectInt b = blocks[bi];
+            RectInt area = new RectInt(Period * b.x + 1, Period * b.y + 1, Period * b.width - 1, Period * b.height - 1);
+            for (int x = area.xMin; x < area.xMax; x++)
+            {
+                for (int y = area.yMin; y < area.yMax; y++)
+                {
+                    Wall[x, y] = false; // this also removes the little pillars inside the plaza
+                    Plaza[x, y] = true;
+                }
+            }
+            if (bi == 0) Start = area;
+            else Rooms.Add(area);
         }
 
-        public int OpenCount
+        OpenCount = 0;
+        for (int x = 0; x < Size; x++)
         {
-            get
+            for (int y = 0; y < Size; y++)
             {
-                int n = 0;
-                for (int x = 0; x < Size; x++)
-                    for (int y = 0; y < Size; y++)
-                        if (!Wall[x, y]) n++;
-                return n;
+                if (!Wall[x, y]) OpenCount++;
             }
         }
+    }
 
-        /// <summary>Cells of an area shrunk by <paramref name="margin"/> on every side (keeps entrances clear of clutter).</summary>
-        public static List<Vector2Int> Interior(RectInt area, int margin)
-        {
-            var list = new List<Vector2Int>();
-            for (int x = area.xMin + margin; x < area.xMax - margin; x++)
-                for (int y = area.yMin + margin; y < area.yMax - margin; y++) list.Add(new Vector2Int(x, y));
-            return list;
-        }
+    MazeEdge MakeEdge(int x, int y, bool right)
+    {
+        MazeEdge e = new MazeEdge();
+        e.x = x;
+        e.y = y;
+        e.right = right;
+        return e;
+    }
 
-        /// <summary>Every floor cell of every open area except the starting plaza.</summary>
-        public List<Vector2Int> RoomCells()
+    // puts the groups of a and b together. returns false if they were already the same group
+    bool Join(int a, int b)
+    {
+        int groupA = group[a];
+        int groupB = group[b];
+        if (groupA == groupB) return false;
+        for (int i = 0; i < group.Length; i++)
         {
-            var list = new List<Vector2Int>();
-            foreach (var r in Rooms) list.AddRange(Interior(r, 0));
-            return list;
+            if (group[i] == groupA) group[i] = groupB;
         }
+        return true;
+    }
+
+    public bool InMap(Vector2Int c)
+    {
+        return c.x >= 0 && c.y >= 0 && c.x < Size && c.y < Size;
+    }
+
+    public bool IsWall(Vector2Int c)
+    {
+        if (!InMap(c)) return true;
+        return Wall[c.x, c.y];
+    }
+
+    public List<Vector2Int> WallCells()
+    {
+        List<Vector2Int> list = new List<Vector2Int>();
+        for (int x = 0; x < Size; x++)
+        {
+            for (int y = 0; y < Size; y++)
+            {
+                if (Wall[x, y]) list.Add(new Vector2Int(x, y));
+            }
+        }
+        return list;
+    }
+
+    // all the cells of an area, minus a border of "margin" cells (so stuff doesnt block the entrances)
+    public static List<Vector2Int> Interior(RectInt area, int margin)
+    {
+        List<Vector2Int> list = new List<Vector2Int>();
+        for (int x = area.xMin + margin; x < area.xMax - margin; x++)
+        {
+            for (int y = area.yMin + margin; y < area.yMax - margin; y++)
+            {
+                list.Add(new Vector2Int(x, y));
+            }
+        }
+        return list;
+    }
+
+    // every floor cell of the plazas, not counting the start plaza
+    public List<Vector2Int> RoomCells()
+    {
+        List<Vector2Int> list = new List<Vector2Int>();
+        foreach (RectInt room in Rooms)
+        {
+            list.AddRange(Interior(room, 0));
+        }
+        return list;
     }
 }

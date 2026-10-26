@@ -1,6 +1,6 @@
 {
     "name": "SnakesTemptation",
-    "rootNamespace": "SnakesTemptation",
+    "rootNamespace": "",
     "references": [
         "Unity.InputSystem",
         "UnityEngine.UI",

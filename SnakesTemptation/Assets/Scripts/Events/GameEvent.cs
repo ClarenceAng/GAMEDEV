@@ -1,26 +1,34 @@
-using System;
+using System.Collections.Generic;
 using UnityEngine;
 
-namespace SnakesTemptation
+// an event you can make as an asset. the game raises it and anything that registered gets called.
+// this way the audio and camera dont need to know about the game script at all
+[CreateAssetMenu(menuName = "Snake's Temptation/Game Event", fileName = "GameEvent")]
+public class GameEvent : ScriptableObject
 {
-    /// <summary>
-    /// An event channel (event broadcasting). Whoever raises it and whoever listens to it only share this asset, never a
-    /// reference to each other: the game raises "the snake crashed", and the audio and the camera react to it. The channels
-    /// live under Assets/ScriptableObjects/Events and are grouped by <see cref="GameEvents"/>.
-    /// </summary>
-    [CreateAssetMenu(menuName = "Snake's Temptation/Game Event", fileName = "GameEvent")]
-    public sealed class GameEvent : ScriptableObject
+    List<System.Action> listeners = new List<System.Action>();
+
+    public void Raise()
     {
-        event Action Raised;
+        for (int i = 0; i < listeners.Count; i++)
+        {
+            listeners[i]();
+        }
+    }
 
-        /// <summary>Calls every listener.</summary>
-        public void Raise() => Raised?.Invoke();
+    public void Register(System.Action listener)
+    {
+        listeners.Add(listener);
+    }
 
-        public void Register(Action listener) => Raised += listener;
+    // IMPORTANT: always unregister when your object is destroyed, the asset stays around between scenes
+    public void Unregister(System.Action listener)
+    {
+        listeners.Remove(listener);
+    }
 
-        /// <summary>Listeners must unregister when they are destroyed: the asset outlives every scene.</summary>
-        public void Unregister(Action listener) => Raised -= listener;
-
-        public int ListenerCount => Raised?.GetInvocationList().Length ?? 0;
+    public int ListenerCount
+    {
+        get { return listeners.Count; }
     }
 }
