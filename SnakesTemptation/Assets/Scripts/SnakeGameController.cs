@@ -20,8 +20,10 @@ namespace SnakesTemptation
     {
         [Header("Assets (filled by Tools > Snake's Temptation > Build Snake Scene)")]
         public ArtSet art;
-        [Tooltip("WAV files under Assets/Audio (Sfx and Music).")]
+        [Tooltip("Assets/ScriptableObjects/SoundSet.asset: the WAV files under Assets/Audio.")]
         public SoundSet sounds;
+        [Tooltip("Assets/ScriptableObjects/GameEvents.asset: the event channels the game broadcasts on.")]
+        public GameEvents events;
         public Camera cam;
         public Light sun;
 
@@ -104,6 +106,8 @@ namespace SnakesTemptation
         public CutscenePlan Plan => plan;
         /// <summary>The game's sound (for tests).</summary>
         public RetroAudio Audio => audioFx;
+        /// <summary>Collision detection in the 3D world (null on the retro board).</summary>
+        public CollisionWorld Collisions => collisions;
         /// <summary>How far the monster's eyes are from the camera (for tests).</summary>
         public float MonsterFaceDistance => monsterView != null ? Vector3.Distance(monsterView.FaceWorld, cam.transform.position) : float.PositiveInfinity;
 
@@ -115,6 +119,7 @@ namespace SnakesTemptation
         SnakeView snakeView;
         MonsterView monsterView;
         PowerupView powerupView;
+        CollisionWorld collisions;
         PowerupRules rules;
         float glowVis, lanternBanner;
         bool wasRevealed;
@@ -144,6 +149,7 @@ namespace SnakesTemptation
         float savedFogDensity;
         UnityEngine.Rendering.AmbientMode savedAmbientMode;
         FogMode savedFogMode;
+        SimulationMode savedSimulationMode;
 
         // ===================================================================================== lifecycle
 
@@ -153,7 +159,14 @@ namespace SnakesTemptation
                 Debug.LogError("SnakeGameController: art set is incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
             if (sounds == null || !sounds.IsComplete)
                 Debug.LogError("SnakeGameController: sound set is incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
+            if (events == null || !events.IsComplete)
+                Debug.LogError("SnakeGameController: game events are incomplete. Run Tools > Snake's Temptation > Build Snake Scene.", this);
+            if (events == null) events = ScriptableObject.CreateInstance<GameEvents>(); // nothing listens, nothing breaks
             if (cam == null) cam = Camera.main;
+
+            // The game steps physics itself, once per move (see CollisionWorld).
+            savedSimulationMode = Physics.simulationMode;
+            Physics.simulationMode = SimulationMode.Script;
 
             savedFog = RenderSettings.fog;
             savedFogColor = RenderSettings.fogColor;
@@ -164,6 +177,7 @@ namespace SnakesTemptation
 
             audioFx = gameObject.AddComponent<RetroAudio>();
             audioFx.Load(sounds);
+            audioFx.Listen(events);
             SetupPost();
             hud = new Hud(transform, cam);
             BuildWorld();
@@ -177,6 +191,14 @@ namespace SnakesTemptation
             RenderSettings.fogMode = savedFogMode;
             RenderSettings.ambientMode = savedAmbientMode;
             RenderSettings.ambientLight = savedAmbient;
+            Physics.simulationMode = savedSimulationMode;
+            if (rig != null) rig.Dispose(); // the event assets outlive this scene
+        }
+
+        /// <summary>Broadcasts a gameplay moment to whoever listens (the audio and the camera).</summary>
+        static void Raise(GameEvent channel)
+        {
+            if (channel != null) channel.Raise();
         }
 
         void Update()
@@ -221,7 +243,11 @@ namespace SnakesTemptation
             RetroRect = new RectInt(Maze.Start.x + 1, Maze.Start.y + 1, Maze.Start.width - 2, Maze.Start.height - 2);
             Sim.SetPlayfield(RetroRect);
             grid = new GridMap(Maze.Size, Maze.Size);
-            if (rig == null) rig = new CameraRig(cam, RetroRect.width, RetroRect.height);
+            if (rig == null)
+            {
+                rig = new CameraRig(cam, RetroRect.width, RetroRect.height);
+                rig.Listen(events);
+            }
 
             worldRoot = new GameObject("World").transform;
             worldRoot.SetParent(transform, false);
@@ -232,6 +258,7 @@ namespace SnakesTemptation
             rules = new PowerupRules { Duration = lanternSeconds, FirstDelay = firstLanternDelay, RespawnDelay = lanternRespawnDelay };
             snakeView = new SnakeView(worldRoot, grid, art);
             monsterView = null;
+            collisions = null; // the retro board is plain Snake on a grid; the 3D world gets its colliders when it appears
 
             State = GameState.Title;
             stateTime = 0f;
@@ -269,6 +296,7 @@ namespace SnakesTemptation
         {
             seed = newSeed;
             if (monsterView != null) monsterView.Dispose();
+            worldRoot.gameObject.SetActive(false); // its colliders leave the physics scene now, not at the end of the frame
             Destroy(worldRoot.gameObject);
             BuildWorld();
         }
@@ -361,7 +389,7 @@ namespace SnakesTemptation
                     if (State == GameState.Chase)
                     {
                         rules.Tick(dt, Sim);
-                        if (wasRevealed && !rules.Revealed) audioFx.Dim(); // the glow ran out
+                        if (wasRevealed && !rules.Revealed) Raise(events.lanternExpired);
                         wasRevealed = rules.Revealed;
                     }
                     break;
@@ -390,7 +418,7 @@ namespace SnakesTemptation
             stateTime = 0f;
             snakeAcc = 0f;
             audioFx.Muted = false;  // sound begins with the game, not before
-            audioFx.PlayMusic(false);
+            Raise(events.retroStarted);
         }
 
         /// <summary>Seconds after dying before Space restarts: longer when the jumpscare has to play out first.</summary>
@@ -414,6 +442,7 @@ namespace SnakesTemptation
         {
             var before = new List<Vector2Int>(Sim.Snake);
             StepResult r = Sim.Step();
+            if (collisions != null) r = collisions.Detect(r); // in the 3D world, physics says what the head ran into
             if (r.Moved) snakeView.OnStep(before);
             if (r.Died)
             {
@@ -425,12 +454,11 @@ namespace SnakesTemptation
                 rules.Collect();
                 wasRevealed = true;
                 lanternBanner = 2.2f;
-                audioFx.Chime();
-                rig.Impulse(0.12f);
+                Raise(events.lanternCollected);
             }
             if (!r.Ate) return;
 
-            audioFx.Eat();
+            Raise(events.pickupEaten);
             if (State == GameState.Retro)
             {
                 if (Sim.ApplesEaten >= applesToFlip) BeginTransition();
@@ -447,7 +475,7 @@ namespace SnakesTemptation
                     monsterAcc = -ChaseTuning.RespawnGrace;
                     pathDist = int.MaxValue;
                     pathDistTimer = 0f;
-                    rig.Impulse(0.45f);
+                    Raise(events.monsterRelocated);
                 }
             }
         }
@@ -460,6 +488,7 @@ namespace SnakesTemptation
             {
                 monsterAcc -= interval;
                 StepResult r = Sim.StepMonster();
+                if (collisions != null) r = collisions.Detect(r);
                 if (r.Moved)
                 {
                     monsterView.OnStep(Sim.Monster);
@@ -484,8 +513,9 @@ namespace SnakesTemptation
             monsterSpawnCell = setup.MonsterSpawn;
             arena.PlantTrees(setup.Trees);
             mazeView.Show();
-            audioFx.StopMusic();
-            audioFx.Flip();
+            collisions = new CollisionWorld(worldRoot, grid, Sim);
+            Sim.PhysicsContacts = true;
+            Raise(events.worldFlipped);
         }
 
         void UpdateTransition()
@@ -496,8 +526,7 @@ namespace SnakesTemptation
             {
                 monsterSpawned = true;
                 monsterView = new MonsterView(worldRoot, grid, art, monsterSpawnCell);
-                audioFx.Roar();
-                rig.Impulse(0.9f);
+                Raise(events.monsterRose);
             }
 
             if (stateTime >= EmergeEnd)
@@ -510,7 +539,7 @@ namespace SnakesTemptation
                 rules.Start();
                 Lives = livesIn3D;
                 hintLeft = 9f;
-                audioFx.PlayMusic(true);
+                Raise(events.chaseStarted);
             }
         }
 
@@ -525,22 +554,15 @@ namespace SnakesTemptation
 
             State = gameOver ? GameState.Lost : GameState.Respawn;
             stateTime = 0f;
-            audioFx.StopMusic();
             // Devoured by the apple monster in the 3D world: it lunges out of the dark into the camera.
             lostByScare = jumpscare = Sim.Cause == DeathCause.Monster && monsterView != null && Look > 0.9f;
             if (jumpscare)
             {
                 monsterView.BeginLunge();
-                audioFx.Jumpscare();
-                rig.Impulse(2.2f);
-                rig.FovKick = 22f;
                 jumpFlash = 1f;
+                Raise(events.snakeDevoured);
             }
-            else
-            {
-                audioFx.Die();
-                rig.Impulse(1f);
-            }
+            else Raise(events.snakeCrashed);
             respawnDelay = jumpscare ? JumpscareSeconds + 1.2f : 1.4f;
         }
 
@@ -552,7 +574,6 @@ namespace SnakesTemptation
             monsterView.Teleport(monsterCell);
             monsterRise = 0f;                       // it climbs out of the ground again
             rig.Snap();
-            rig.Impulse(0.25f);
             jumpFlash = 0.7f;                       // a white-out as you come back
             glowVis = 0f;
             wasRevealed = false;
@@ -563,8 +584,7 @@ namespace SnakesTemptation
             stateTime = 0f;
             snakeAcc = 0f;
             monsterAcc = -ChaseTuning.RespawnGrace; // a moment before it moves
-            audioFx.Respawn();
-            audioFx.PlayMusic(true);
+            Raise(events.snakeRespawned);
         }
 
         void Win()
@@ -574,8 +594,7 @@ namespace SnakesTemptation
             {
                 State = GameState.Won;
                 stateTime = 0f;
-                audioFx.StopMusic();
-                audioFx.Win();
+                Raise(events.gameWon);
             }
         }
 
@@ -598,20 +617,19 @@ namespace SnakesTemptation
             cutEvents.Clear();
             for (int i = 0; i < CutscenePlan.Trees; i++)
             {
-                cutEvents.Add((plan.SeedAt(i) + 0.45f, () => audioFx.Plant()));
-                cutEvents.Add((plan.GrowStart(i), () => audioFx.Grow()));
+                cutEvents.Add((plan.SeedAt(i) + 0.45f, () => Raise(events.seedPlanted)));
+                cutEvents.Add((plan.GrowStart(i), () => Raise(events.treeGrew)));
             }
-            cutEvents.Add((plan.DialogueStart - 0.1f, () => audioFx.Hiss()));
+            cutEvents.Add((plan.DialogueStart - 0.1f, () => Raise(events.serpentHissed)));
             for (int i = 0; i < plan.LineStart.Length; i++)
             {
                 int line = i;
                 if (cutsceneVoice != null && line < cutsceneVoice.Length && cutsceneVoice[line] != null)
                     cutEvents.Add((plan.LineStart[line], () => audioFx.PlayVoice(cutsceneVoice[line])));
             }
-            cutEvents.Add((plan.BiteAt, () => audioFx.Crunch()));
+            cutEvents.Add((plan.BiteAt, () => Raise(events.appleBitten)));
 
-            audioFx.StopMusic();
-            audioFx.PlayGardenMusic();
+            Raise(events.endingStarted);
         }
 
         void UpdateCutscene()

@@ -44,6 +44,35 @@ namespace SnakesTemptation
 
         public void Impulse(float amount) => impulse = Mathf.Max(impulse, amount);
 
+        readonly System.Collections.Generic.List<(GameEvent channel, System.Action listener)> subscriptions =
+            new System.Collections.Generic.List<(GameEvent, System.Action)>();
+
+        /// <summary>Shakes the camera in response to the game's events (how hard depends on how dramatic the moment is).</summary>
+        public void Listen(GameEvents events)
+        {
+            if (events == null) return;
+            On(events.lanternCollected, () => Impulse(0.12f));
+            On(events.monsterRelocated, () => Impulse(0.45f));
+            On(events.monsterRose, () => Impulse(0.9f));
+            On(events.snakeCrashed, () => Impulse(1f));
+            On(events.snakeDevoured, () => { Impulse(2.2f); FovKick = 22f; });
+            On(events.snakeRespawned, () => Impulse(0.25f));
+        }
+
+        /// <summary>Stops listening. The event assets outlive the scene, so this must run when the game is destroyed.</summary>
+        public void Dispose()
+        {
+            foreach (var (channel, listener) in subscriptions) channel.Unregister(listener);
+            subscriptions.Clear();
+        }
+
+        void On(GameEvent channel, System.Action listener)
+        {
+            if (channel == null) return;
+            channel.Register(listener);
+            subscriptions.Add((channel, listener));
+        }
+
         /// <summary>Jump straight to wherever the snake is now instead of swooping there (used when it respawns).</summary>
         public void Snap()
         {

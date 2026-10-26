@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6dd8d34ad4185cf4c8c90a5bdfabc3c8, type: 3}
+  m_Name: GameEvents
+  m_EditorClassIdentifier: SnakesTemptation::SnakesTemptation.GameEvents
+  retroStarted: {fileID: 11400000, guid: d141716b7d6170c4faf181a325c746e1, type: 2}
+  pickupEaten: {fileID: 11400000, guid: c4c08a8a6c5b4084b9ee6bf345113a82, type: 2}
+  worldFlipped: {fileID: 11400000, guid: c024a7360fc31204a9b293d1025afef3, type: 2}
+  monsterRose: {fileID: 11400000, guid: 24be3101cb976ea4499f008e7d9079d3, type: 2}
+  chaseStarted: {fileID: 11400000, guid: 6fa4b6baa2c05034ab447d4b1177cf75, type: 2}
+  lanternCollected: {fileID: 11400000, guid: 0c6c25ce993b03f408d1962ac40cfd66, type: 2}
+  lanternExpired: {fileID: 11400000, guid: 93c240162f811734085646bbdc6f1602, type: 2}
+  monsterRelocated: {fileID: 11400000, guid: 78ce62d75bf1cae448fe10ad2b09d7cc, type: 2}
+  snakeCrashed: {fileID: 11400000, guid: 2096b1df1e60b5b4a8f93ff11b16fcb4, type: 2}
+  snakeDevoured: {fileID: 11400000, guid: cccb44abb5ef84840b775be21ae1abab, type: 2}
+  snakeRespawned: {fileID: 11400000, guid: 55c8303dbdc9cf94b8af397d145b2026, type: 2}
+  gameWon: {fileID: 11400000, guid: 860669691df10a54d8611dbbe682ddb5, type: 2}
+  endingStarted: {fileID: 11400000, guid: f72f752e40f68a64fa99bb87e04b9a58, type: 2}
+  seedPlanted: {fileID: 11400000, guid: db6f59945fdc9264d8110f0aff98c713, type: 2}
+  treeGrew: {fileID: 11400000, guid: 844fb31538e72d545b60f352e5105be9, type: 2}
+  serpentHissed: {fileID: 11400000, guid: 808d14147ffa48d48b4466fb93250ff8, type: 2}
+  appleBitten: {fileID: 11400000, guid: 313d6873c73a31b4bab590c5ad3f22ee, type: 2}

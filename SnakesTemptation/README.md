@@ -1,33 +1,76 @@
 # Snake's Temptation
 
-A Unity game-jam project: a retro Game Boy–style snake game that flips into a 3D hedge-maze chase against an apple
-monster, and ends in a sunlit garden where the snake plants three apple seeds.
+**Game Jam 1: Retro Revolution.** Retro title: **Snake** (1976). Genre: **survival horror**.
+
+## Group members
+
+- Clarence Ang (hosts the repository)
+- Mo David
+- Nathaniel Irvin Adiong
+- Mariella Jeanne Dellosa
+
+## Description
+
+Snake's Temptation begins as the classic Snake on a green Game Boy-style screen: steer the snake, eat apples to grow,
+and don't hit the walls or your own tail. After the third apple the screen glitches and the board falls away into a dark
+3D hedge maze, seen from just behind the snake, and an apple monster climbs out of the ground to hunt you. The snake
+can never stop moving, so you have to find three glowing apple seeds in the dark while staying ahead of the monster,
+which grows faster with every seed; lanterns light you up and reveal where the seeds are for 15 seconds, and you have
+three lives. Collect all three seeds and you escape to a sunlit garden, where the snake plants them and, as the serpent
+of Eden, tempts Eve with the fruit.
+
+## Controls
+
+| Action | Keyboard | Gamepad |
+|---|---|---|
+| Start the game | Space, Enter or any arrow key | A or Start |
+| Steer on the retro board (up, down, left, right) | Arrow keys or W A S D | D-pad or left stick |
+| Turn left / right in the 3D maze (relative to the snake) | ← / → or A / D | D-pad left / right or left stick |
+| Skip the ending | Space or Enter | A or Start |
+| Play again after a win or a game over | Space or Enter | A or Start |
+
+## Game jam requirements
+
+| Requirement | Where |
+|---|---|
+| 3D, one playable level | `Assets/Scenes/SnakesTemptation.unity`: the retro board flips into a 3D maze |
+| The base game's loop | Steer, eat, grow, avoid walls: `Assets/Scripts/Sim/SnakeSim.cs` |
+| Scriptable Objects | `Assets/ScriptableObjects/`: the event channels (`GameEvent`, grouped by `GameEvents`) and the `SoundSet` |
+| Event broadcasting | The controller raises `GameEvent` channels; `RetroAudio` and `CameraRig` listen (`Assets/Scripts/Events/`) |
+| Lighting | A dimming sun, fog and ambient light make the maze dark; point lights on the snake (its lantern glow), the seeds, the lantern and the monster |
+| Collision detection | Unity colliders: hedges and trees are box colliders, the seed, lantern and monster are triggers, and the snake's head reports them through `OnTriggerEnter` (`Assets/Scripts/Physics/`) |
+| Unity Registry packages only | `Packages/manifest.json`. No Asset Store assets: the models, textures and sounds were made for this project |
+
+## Running it
 
 - **Unity:** 6000.6.0f1 (Unity 6), Universal Render Pipeline
-- **Open it:** Unity Hub → Add → select this folder. The game scene opens automatically.
+- **Open it:** Unity Hub → Add → select this folder. The game scene opens automatically; press Play.
 
 ## Project layout
 
 ```
 Assets/
-  Audio/         Sound effects (Sfx) and music loops (Music), WAV
-  Editor/        Editor-only tools (menu: Tools > Snake's Temptation)
-  Input/         Input System actions
-  Materials/     Grouped by subject: AppleMonster, Snake, Seed, Trees, Maze, Retro, Powerups
-  Meshes/        AppleMonster (generated meshes)
-  Prefabs/       AppleMonster.prefab
-  Scenes/        SnakesTemptation.unity (the whole game), SampleScene.unity (Unity template)
-  Scripts/       Game code (one assembly: SnakesTemptation.asmdef)
-    Sim/           Game rules and maze generation: plain C#, no GameObjects
-    View/          Everything you see: snake, maze, monster, trees, garden, HUD, camera
-    Cutscene/      The ending's dialogue
-    Audio/         Plays the sounds from Assets/Audio
-    Util/          Shared helpers
-  Settings/      URP render pipeline assets
-  Tests/         EditMode and PlayMode tests
-  Textures/      AppleMonster, Maze
-Packages/        Unity package list
-ProjectSettings/ Unity project settings
+  Audio/             Sound effects (Sfx) and music loops (Music), WAV
+  Editor/            Editor-only tools (menu: Tools > Snake's Temptation)
+  Input/             Input System actions
+  Materials/         Grouped by subject: AppleMonster, Snake, Seed, Trees, Maze, Retro, Powerups
+  Meshes/            AppleMonster (generated meshes)
+  Prefabs/           AppleMonster.prefab
+  Scenes/            SnakesTemptation.unity (the whole game), SampleScene.unity (Unity template)
+  ScriptableObjects/ GameEvents.asset, SoundSet.asset, and the event channels (Events/)
+  Scripts/           Game code (one assembly: SnakesTemptation.asmdef)
+    Sim/               Game rules and maze generation: plain C#, no GameObjects
+    View/              Everything you see: snake, maze, monster, trees, garden, HUD, camera
+    Physics/           Collision detection in the 3D maze (colliders and the head's trigger)
+    Events/            The event channels (ScriptableObjects)
+    Cutscene/          The ending's dialogue
+    Audio/             Plays the sounds from Assets/Audio
+    Util/              Shared helpers
+  Settings/          URP render pipeline assets
+  Tests/             EditMode and PlayMode tests
+  Textures/          AppleMonster, Maze
+Packages/            Unity package list
+ProjectSettings/     Unity project settings
 ```
 
 ## Rebuilding generated assets
@@ -35,9 +78,8 @@ ProjectSettings/ Unity project settings
 The apple monster and the scene's materials are generated by code, so they can be rebuilt at any time:
 
 1. `Tools > Snake's Temptation > Build Apple Monster` (meshes, materials, textures, prefab)
-2. `Tools > Snake's Temptation > Build Snake Scene` (materials and `SnakesTemptation.unity`; it also assigns the sounds in `Assets/Audio`)
-
-Both update assets in place, so existing references stay valid.
+2. `Tools > Snake's Temptation > Build Snake Scene` (materials and `SnakesTemptation.unity`; it also assigns the
+   ScriptableObject assets in `Assets/ScriptableObjects`)
 
 ## Tests
 

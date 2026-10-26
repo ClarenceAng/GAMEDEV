@@ -4,7 +4,8 @@
 //
 // Materials are real assets (not Shader.Find at runtime) so the shaders are guaranteed to be included in player builds.
 // Re-running updates the materials and rewrites the scene in place; the AppleMonster prefab must already exist
-// (Tools > Snake's Temptation > Build Apple Monster), and so must the sounds under Assets/Audio.
+// (Tools > Snake's Temptation > Build Apple Monster), and so must the ScriptableObject assets under
+// Assets/ScriptableObjects (the sound set and the game events).
 
 using System;
 using System.Collections.Generic;
@@ -22,7 +23,8 @@ public static class SnakeSceneBuilder
     const string TexDir = "Assets/Textures/Maze";
     const string ScenePath = "Assets/Scenes/SnakesTemptation.unity";
     const string MonsterPrefab = "Assets/Prefabs/AppleMonster.prefab";
-    const string AudioDir = "Assets/Audio";
+    const string SoundSetPath = "Assets/ScriptableObjects/SoundSet.asset";
+    const string GameEventsPath = "Assets/ScriptableObjects/GameEvents.asset";
 
     // Material name -> subfolder of MatDir, so the Project window is grouped by what each material is for.
     static readonly Dictionary<string, string> MatFolders = new Dictionary<string, string>
@@ -95,14 +97,8 @@ public static class SnakeSceneBuilder
         var game = new GameObject("SnakesTemptation");
         var ctrl = game.AddComponent<SnakeGameController>();
         ctrl.art = art;
-        ctrl.sounds = new SoundSet
-        {
-            eat = Sound("Sfx/Eat"), win = Sound("Sfx/Win"), die = Sound("Sfx/Die"), flip = Sound("Sfx/Flip"),
-            roar = Sound("Sfx/Roar"), step = Sound("Sfx/Step"), chime = Sound("Sfx/Chime"), dim = Sound("Sfx/Dim"),
-            scare = Sound("Sfx/Scare"), respawn = Sound("Sfx/Respawn"), plant = Sound("Sfx/Plant"), grow = Sound("Sfx/Grow"),
-            crunch = Sound("Sfx/Crunch"), hiss = Sound("Sfx/Hiss"),
-            musicRetro = Sound("Music/Retro"), musicChase = Sound("Music/Chase"), musicGarden = Sound("Music/Garden"),
-        };
+        ctrl.sounds = Existing<SoundSet>(SoundSetPath);
+        ctrl.events = Existing<GameEvents>(GameEventsPath);
         ctrl.cam = cam;
         ctrl.sun = sun;
 
@@ -127,12 +123,11 @@ public static class SnakeSceneBuilder
         }
     }
 
-    static AudioClip Sound(string name)
+    static T Existing<T>(string path) where T : UnityEngine.Object
     {
-        string path = $"{AudioDir}/{name}.wav";
-        var clip = AssetDatabase.LoadAssetAtPath<AudioClip>(path);
-        if (clip == null) throw new InvalidOperationException($"Missing {path}.");
-        return clip;
+        var asset = AssetDatabase.LoadAssetAtPath<T>(path);
+        if (asset == null) throw new InvalidOperationException($"Missing {path}.");
+        return asset;
     }
 
     // Tileable leafy noise for the hedges (periodic value noise at three scales plus bright speckles).

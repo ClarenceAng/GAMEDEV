@@ -6,6 +6,7 @@ namespace SnakesTemptation
     /// <summary>
     /// Plays the game's sounds (square-wave blips, a rumble, a roar, three music loops). They are WAV files under
     /// Assets/Audio, handed over by the controller through <see cref="Load"/>; nothing is synthesised while the game runs.
+    /// It never needs to be told what to play: it listens to the game's events (<see cref="Listen"/>) and reacts to them.
     ///
     /// Two rules keep it from ever being a surprise:
     ///  - It starts <see cref="Muted"/>. Nothing can make a sound (not even a direct call) until the controller unmutes it
@@ -16,7 +17,8 @@ namespace SnakesTemptation
     public sealed class RetroAudio : MonoBehaviour
     {
         AudioSource sfx, music, voice;
-        SoundSet clips = new SoundSet();
+        SoundSet clips;
+        readonly List<(GameEvent channel, System.Action listener)> subscriptions = new List<(GameEvent, System.Action)>();
         float musicTarget;
         bool muted = true;
 
@@ -55,10 +57,46 @@ namespace SnakesTemptation
             voice = gameObject.AddComponent<AudioSource>();
             voice.playOnAwake = false;
             voice.spatialBlend = 0f;
+            if (clips == null) clips = ScriptableObject.CreateInstance<SoundSet>();
+        }
+
+        void OnDestroy()
+        {
+            foreach (var (channel, listener) in subscriptions) channel.Unregister(listener);
+            subscriptions.Clear();
         }
 
         /// <summary>The clips to play. A missing clip is simply silent.</summary>
-        public void Load(SoundSet set) => clips = set ?? new SoundSet();
+        public void Load(SoundSet set) => clips = set != null ? set : ScriptableObject.CreateInstance<SoundSet>();
+
+        /// <summary>Starts reacting to the game's events with sound and music.</summary>
+        public void Listen(GameEvents events)
+        {
+            if (events == null) return;
+            On(events.retroStarted, () => PlayMusic(false));
+            On(events.pickupEaten, Eat);
+            On(events.worldFlipped, () => { StopMusic(); Flip(); });
+            On(events.monsterRose, Roar);
+            On(events.chaseStarted, () => PlayMusic(true));
+            On(events.lanternCollected, Chime);
+            On(events.lanternExpired, Dim);
+            On(events.snakeCrashed, () => { StopMusic(); Die(); });
+            On(events.snakeDevoured, () => { StopMusic(); Jumpscare(); });
+            On(events.snakeRespawned, () => { Respawn(); PlayMusic(true); });
+            On(events.gameWon, () => { StopMusic(); Win(); });
+            On(events.endingStarted, () => { StopMusic(); PlayGardenMusic(); });
+            On(events.seedPlanted, Plant);
+            On(events.treeGrew, Grow);
+            On(events.serpentHissed, Hiss);
+            On(events.appleBitten, Crunch);
+        }
+
+        void On(GameEvent channel, System.Action listener)
+        {
+            if (channel == null) return;
+            channel.Register(listener);
+            subscriptions.Add((channel, listener));
+        }
 
         void Update() => music.volume = Mathf.MoveTowards(music.volume, muted ? 0f : musicTarget * Master, Time.unscaledDeltaTime * 1.5f);
 

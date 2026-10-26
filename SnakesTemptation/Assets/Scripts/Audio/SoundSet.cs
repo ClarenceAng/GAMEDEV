@@ -4,11 +4,11 @@ using UnityEngine;
 namespace SnakesTemptation
 {
     /// <summary>
-    /// Every sound the game plays: WAV files under Assets/Audio (Sfx and Music), filled in by the scene builder
-    /// (Tools > Snake's Temptation > Build Snake Scene). Nothing is synthesised while the game runs.
+    /// Every sound the game plays, as an asset (Assets/ScriptableObjects/SoundSet.asset) that points at the WAV files under
+    /// Assets/Audio (Sfx and Music). Swapping a sound means changing this asset, not the code or the scene.
     /// </summary>
-    [Serializable]
-    public sealed class SoundSet
+    [CreateAssetMenu(menuName = "Snake's Temptation/Sound Set", fileName = "SoundSet")]
+    public sealed class SoundSet : ScriptableObject
     {
         [Header("Effects (Assets/Audio/Sfx)")]
         public AudioClip eat;

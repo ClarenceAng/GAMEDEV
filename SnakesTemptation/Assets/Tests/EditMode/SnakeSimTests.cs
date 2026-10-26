@@ -9,6 +9,32 @@ namespace SnakesTemptation.Tests
         static SnakeSim New() => new SnakeSim(21, 21, 1);
 
         [Test]
+        public void WithPhysicsContacts_StepOnlyMoves_AndTheReportedContactsApply()
+        {
+            var s = New();
+            s.PhysicsContacts = true;
+            s.PlaceApple(new Vector2Int(11, 10));
+            s.Blocked.Add(new Vector2Int(13, 10));
+
+            var r = s.Step(); // onto the apple: on its own the sim does not eat it
+            Assert.IsFalse(r.Ate);
+            Assert.AreEqual(s.Apple, s.Head);
+            Assert.IsTrue(s.EatApple(), "physics reported the apple");
+            Assert.AreEqual(1, s.ApplesEaten);
+            Assert.AreNotEqual(new Vector2Int(11, 10), s.Apple, "the next apple is somewhere else");
+            s.Step();
+            Assert.AreEqual(4, s.Snake.Count, "it grows on the step after eating");
+
+            r = s.Step(); // into the blocked cell: not fatal until physics reports it
+            Assert.IsFalse(r.Died);
+            r = s.Crash(DeathCause.Obstacle);
+            Assert.IsTrue(r.Died);
+            Assert.IsTrue(s.Dead);
+            Assert.AreEqual(DeathCause.Obstacle, s.Cause);
+            Assert.IsFalse(s.EatApple(), "nothing more happens to a dead snake");
+        }
+
+        [Test]
         public void StartsWithThreeSegmentsFacingRight()
         {
             var s = New();

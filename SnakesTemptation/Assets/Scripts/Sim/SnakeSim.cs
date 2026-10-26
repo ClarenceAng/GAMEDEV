@@ -51,6 +51,14 @@ namespace SnakesTemptation
         /// </summary>
         public bool SelfCollision = true;
 
+        /// <summary>
+        /// The 3D world turns this on: then <see cref="Step"/> and <see cref="StepMonster"/> only move things, and what the
+        /// head runs into (a hedge, a tree, the monster, a seed, the lantern) is detected by Unity physics (CollisionWorld),
+        /// which applies it through <see cref="Crash"/>, <see cref="EatApple"/> and <see cref="TakePowerup"/>. Off (the retro
+        /// board, and the unit tests and balance bot), the same contacts are checked on the grid.
+        /// </summary>
+        public bool PhysicsContacts;
+
         /// <summary>Pickups spawn at least this many cells (Manhattan) from the head when candidates are set.</summary>
         public int SeedMinDistance = 20;
 
@@ -114,6 +122,7 @@ namespace SnakesTemptation
             Dead = false;
             Cause = DeathCause.None;
             SelfCollision = true;
+            PhysicsContacts = false;
             MonsterActive = false;
             HasApple = false;
             HasPowerup = false;
@@ -178,11 +187,14 @@ namespace SnakesTemptation
 
             Vector2Int head = Snake[0] + Heading;
             if (!InBounds(head)) return Die(DeathCause.Wall, r);
-            if (Blocked.Contains(head)) return Die(DeathCause.Obstacle, r);
-            if (MonsterActive && head == Monster) return Die(DeathCause.Monster, r);
+            if (!PhysicsContacts)
+            {
+                if (Blocked.Contains(head)) return Die(DeathCause.Obstacle, r);
+                if (MonsterActive && head == Monster) return Die(DeathCause.Monster, r);
+            }
 
-            bool eats = HasApple && head == Apple;
-            bool takesPowerup = HasPowerup && head == Powerup;
+            bool eats = !PhysicsContacts && HasApple && head == Apple;
+            bool takesPowerup = !PhysicsContacts && HasPowerup && head == Powerup;
             bool grows = eats || pendingGrowth > 0;
 
             // The tail cell is vacated this step unless the snake is growing, so chasing your own tail is legal.
@@ -212,6 +224,31 @@ namespace SnakesTemptation
 
             r.Moved = true;
             return r;
+        }
+
+        // ------------------------------------------------------------------ contacts reported by physics (PhysicsContacts)
+
+        /// <summary>The head ran into a hedge, a tree or the monster.</summary>
+        public StepResult Crash(DeathCause cause) => Dead ? new StepResult() : Die(cause, new StepResult());
+
+        /// <summary>The head touched the pickup: it is eaten, the snake grows on its next step, and the next one appears.</summary>
+        public bool EatApple()
+        {
+            if (Dead || !HasApple) return false;
+            ApplesEaten++;
+            HasApple = false;
+            if (seedCandidates != null) CollectedSeeds.Add(Apple);
+            pendingGrowth++;
+            SpawnApple();
+            return true;
+        }
+
+        /// <summary>The head touched the lantern.</summary>
+        public bool TakePowerup()
+        {
+            if (Dead || !HasPowerup) return false;
+            HasPowerup = false;
+            return true;
         }
 
         StepResult Die(DeathCause cause, StepResult r)
@@ -558,7 +595,7 @@ namespace SnakesTemptation
 
             Monster = NextMonsterCell();
             r.Moved = true;
-            if (Monster == Head) return Die(DeathCause.Monster, r);
+            if (!PhysicsContacts && Monster == Head) return Die(DeathCause.Monster, r);
             return r;
         }
 

@@ -406,24 +406,8 @@ MonoBehaviour:
     lantern: {fileID: 2100000, guid: 781925659ac793f4586955dc2f639dea, type: 2}
     lanternBeam: {fileID: 2100000, guid: 01dc65f3be6a22a4d97a44ebf961c470, type: 2}
     monsterPrefab: {fileID: 5683674564308002050, guid: fded6da0c0914ab4c9c88efe51c3b4a7, type: 3}
-  sounds:
-    eat: {fileID: 8300000, guid: 664c25b58891258479c65912916b2021, type: 3}
-    win: {fileID: 8300000, guid: 2c1b7eb61d0993f4b8dab819236b7f90, type: 3}
-    die: {fileID: 8300000, guid: fb63d901621c7c54ebec036a5e729952, type: 3}
-    flip: {fileID: 8300000, guid: 7316b99c2fb1cb04a9776759d0f7c411, type: 3}
-    roar: {fileID: 8300000, guid: 49579d61ce37bbf4685e6ccc168b3a2f, type: 3}
-    step: {fileID: 8300000, guid: 3b9ec8e3293962247bbe94e7d3810734, type: 3}
-    chime: {fileID: 8300000, guid: 3c7d205501b105042a0fd12c1b2d6e6e, type: 3}
-    dim: {fileID: 8300000, guid: 0f169284e32935040b54ca96417601e0, type: 3}
-    scare: {fileID: 8300000, guid: 126eaf7eb339a8c49a7ca967c8b247be, type: 3}
-    respawn: {fileID: 8300000, guid: e00e84bb0c5c079419d5f5a29f22591c, type: 3}
-    plant: {fileID: 8300000, guid: 0fffe79fc9e50614699d1cf4d02e9948, type: 3}
-    grow: {fileID: 8300000, guid: f1bfb33670071114596129f0501c6980, type: 3}
-    crunch: {fileID: 8300000, guid: ff33e2a3e466f164fb0455c00cb078ac, type: 3}
-    hiss: {fileID: 8300000, guid: 477fefd31541bf946ba8b81cd77e59ac, type: 3}
-    musicRetro: {fileID: 8300000, guid: eb30c8c8dcea24c4b8680d136a152930, type: 3}
-    musicChase: {fileID: 8300000, guid: 7100a11ab7f506b4899e9f8b05ad767c, type: 3}
-    musicGarden: {fileID: 8300000, guid: ad9a7a27732f14c4b9bc2e37165d327a, type: 3}
+  sounds: {fileID: 11400000, guid: c30f95b91fa42b944831f064189d9278, type: 2}
+  events: {fileID: 11400000, guid: 27645b073059a1345989f13e69b77c42, type: 2}
   cam: {fileID: 909932777}
   sun: {fileID: 458459055}
   seed: 0

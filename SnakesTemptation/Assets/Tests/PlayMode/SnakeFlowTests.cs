@@ -324,6 +324,53 @@ namespace SnakesTemptation.Tests
             yield return null;
         }
 
+        [UnityTest]
+        public IEnumerator Collision_TheMazeIsMadeOfUnityColliders_AndTheHeadIsATrigger()
+        {
+            Assert.IsNull(gc.Collisions, "the retro board is plain Snake on a grid");
+            yield return GetToChase();
+            var world = gc.Collisions;
+            Assert.IsNotNull(world);
+            Assert.IsTrue(gc.Sim.PhysicsContacts, "in the maze, what the head runs into is detected by physics");
+            Assert.AreEqual(SimulationMode.Script, Physics.simulationMode, "the game steps physics itself, once per move");
+            Assert.IsTrue(world.Head.GetComponent<Rigidbody>().isKinematic);
+            Assert.IsTrue(world.Head.GetComponent<SphereCollider>().isTrigger);
+
+            // Every hedge and tree cell is inside a collider, and the colliders are merged rectangles, not one per cell.
+            Assert.Greater(world.ObstacleColliders, 0);
+            Assert.Less(world.ObstacleColliders, gc.Sim.Blocked.Count / 3);
+            Physics.SyncTransforms();
+            var grid = new GridMap(gc.Maze.Size, gc.Maze.Size);
+            Vector3 At(Vector2Int c) => gc.transform.TransformPoint(grid.ToWorld(c, 0.5f));
+            foreach (var cell in gc.Sim.Blocked)
+                Assert.IsTrue(Physics.CheckBox(At(cell), Vector3.one * 0.4f, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore), $"no collider on {cell}");
+            Assert.IsFalse(Physics.CheckBox(At(gc.Sim.Head), Vector3.one * 0.4f, Quaternion.identity, ~0, QueryTriggerInteraction.Ignore), "the floor is open");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Events_TheGameBroadcasts_AndListenersLetGoWhenItIsDestroyed()
+        {
+            var events = gc.events;
+            Assert.IsNotNull(events);
+            int eaten = 0, flipped = 0;
+            System.Action onEaten = () => eaten++, onFlipped = () => flipped++;
+            events.pickupEaten.Register(onEaten);
+            events.worldFlipped.Register(onFlipped);
+            yield return GetToChase();
+            events.pickupEaten.Unregister(onEaten);
+            events.worldFlipped.Unregister(onFlipped);
+            Assert.AreEqual(3, eaten, "three apples on the retro board");
+            Assert.AreEqual(1, flipped);
+
+            // The audio and the camera listen without the game knowing about them, and let go when it is destroyed
+            // (the event assets outlive every scene).
+            Assert.AreEqual(2, events.snakeCrashed.ListenerCount, "the audio and the camera");
+            Object.Destroy(gc.gameObject);
+            yield return null;
+            Assert.AreEqual(0, events.snakeCrashed.ListenerCount);
+        }
+
         // Plays the three seeds in the maze and returns with the ending just started.
         IEnumerator GetToTheEnding()
         {
