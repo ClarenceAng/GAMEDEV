@@ -1,3 +1,9 @@
-GummiShip/Library
-GummiShip/Temp
-GummiShip/.vscode
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+.vs/
+.DS_Store
