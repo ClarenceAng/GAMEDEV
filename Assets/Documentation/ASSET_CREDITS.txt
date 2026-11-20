@@ -1,0 +1,9 @@
+TEXTURE SOURCES
+
+Kenney Development Essentials
+https://kenney.nl/assets/development-essentials
+
+SoftGlow.png uses an adapted radial gradient from the Kenney pack.
+The Kenney license is in Assets/Art/Kenney/License.txt.
+
+Other particle textures were prepared for this project.
