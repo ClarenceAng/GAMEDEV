@@ -31,14 +31,14 @@ namespace Pandamonium
         void OnEnable()
         {
             clock.RunStarted += ResetRun;
-            clock.Finished += OnSongFinished;
+            clock.SongEnded += OnSongEnded;
             input.LanePressed += OnLanePressed;
         }
 
         void OnDisable()
         {
             clock.RunStarted -= ResetRun;
-            clock.Finished -= OnSongFinished;
+            clock.SongEnded -= OnSongEnded;
             input.LanePressed -= OnLanePressed;
         }
 
@@ -59,7 +59,9 @@ namespace Pandamonium
             if (playback != null && clock.IsRunning && !clock.IsPaused) FlushMisses(clock.SongTime);
         }
 
-        void OnSongFinished()
+        // SongEnded fires before the clock's Finished, so the run's stats are final before the
+        // results screen reads them.
+        void OnSongEnded()
         {
             if (playback != null) FlushMisses(double.MaxValue); // the song is over: nothing left can be hit
         }

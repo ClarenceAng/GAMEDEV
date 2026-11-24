@@ -42,7 +42,8 @@ namespace Pandamonium
         [SerializeField, Range(0.05f, 0.5f)] float scheduleAhead = 0.1f;
 
         [Tooltip("Extra latency to subtract, in seconds, on top of the mixer's buffer latency. " +
-                 "Raise it if hits consistently feel early-judged on a particular setup.")]
+                 "Raise it if the results screen's average timing is consistently late on a " +
+                 "particular setup (e.g. 40 ms late -> 0.04).")]
         [SerializeField, Range(0f, 0.3f)] float extraOutputLatency = 0f;
 
         const double MaxExtrapolation = 0.1; // never guess more than this past the last DSP step
@@ -85,7 +86,14 @@ namespace Pandamonium
         /// <summary>Raised when a fresh run begins (before the first tick).</summary>
         public event Action RunStarted;
 
-        /// <summary>Raised once, on the tick the clock reaches <see cref="Length"/>.</summary>
+        /// <summary>
+        /// Raised once, on the tick the clock reaches <see cref="Length"/>, just BEFORE
+        /// <see cref="Finished"/>: the last chance to settle the run (HitJudge judges every remaining
+        /// note here), so anything reacting to Finished sees final stats.
+        /// </summary>
+        public event Action SongEnded;
+
+        /// <summary>Raised once, right after <see cref="SongEnded"/>: the run is over.</summary>
         public event Action Finished;
 
         bool HasMusic => music != null && music.clip != null;
@@ -138,6 +146,7 @@ namespace Pandamonium
                 SongTime = Length;
                 IsRunning = false;
                 if (HasMusic) music.Stop();
+                SongEnded?.Invoke();
                 Finished?.Invoke();
             }
         }
