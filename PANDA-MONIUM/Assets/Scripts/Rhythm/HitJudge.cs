@@ -15,15 +15,22 @@ namespace Pandamonium
         [SerializeField] RhythmClock clock;
         [SerializeField] InputController input;
         [SerializeField] LevelSong song;
+        [Tooltip("The Normal timing windows. The Relaxed timing option scales these up (see TimingSetting).")]
         [SerializeField] TimingWindows windows = new();
 
         readonly List<JudgeResult> pending = new();
         ChartPlayback playback;
+        TimingWindows activeWindows;
 
         /// <summary>Raised once per note, when it is judged.</summary>
         public event Action<JudgeResult> NoteJudged;
 
-        public TimingWindows Windows => windows;
+        /// <summary>The windows this run is judged with (the player's timing option applied).</summary>
+        public TimingWindows Windows => activeWindows ?? windows;
+
+        /// <summary>The timing option this run was started with.</summary>
+        public TimingLevel TimingLevel { get; private set; } = TimingLevel.Normal;
+
         public int TotalNotes => playback?.TotalNotes ?? 0;
         public int JudgedCount => playback?.JudgedCount ?? 0;
         public bool IsJudged(int noteId) => playback != null && playback.IsJudged(noteId);
@@ -44,7 +51,9 @@ namespace Pandamonium
 
         void ResetRun()
         {
-            playback = new ChartPlayback(song.Chart, InputController.LaneCount, windows);
+            TimingLevel = TimingSetting.Level;
+            activeWindows = TimingSetting.Apply(windows, TimingLevel);
+            playback = new ChartPlayback(song.Chart, InputController.LaneCount, activeWindows);
         }
 
         void OnLanePressed(int lane)
